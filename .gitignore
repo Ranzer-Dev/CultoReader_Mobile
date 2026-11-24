@@ -7,6 +7,8 @@ web-build/
 # Binários e Builds Android (Nunca subir APK/AAB para o Git)
 *.apk
 *.aab
+releases/
+docs/
 android/.gradle/
 android/app/build/
 android/build/
