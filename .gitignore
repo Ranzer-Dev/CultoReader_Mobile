@@ -1,0 +1,34 @@
+# Dependências
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Binários e Builds Android (Nunca subir APK/AAB para o Git)
+*.apk
+*.aab
+android/.gradle/
+android/app/build/
+android/build/
+android/.cxx/
+android/local.properties
+android/app/release/
+android/.idea/
+android/*.iml
+android/app/*.iml
+
+# Logs e Depuração
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Variáveis de Ambiente e Chaves
+.env
+.env*.local
+*.jks
+*.keystore
+
+# Arquivos do Sistema Operacional
+.DS_Store
+Thumbs.db
