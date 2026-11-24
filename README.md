@@ -5,94 +5,215 @@
 [![SQLite](https://img.shields.io/badge/Database-SQLite_(expo--sqlite)-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://docs.expo.dev/versions/latest/sdk/sqlite/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Status](https://img.shields.io/badge/Status-Produção_v1.0.26-success?style=flat-square)]()
-
-Aplicativo mobile offline-first para **leitura, compreensão, transcrição contínua e gestão completa de cultos e mensagens cristãs**, desenvolvido em **React Native com Expo** e banco de dados **SQLite local**, incorporando CRUD paginado, detecção bíblica instantânea, tradução simultânea no chip (Google ML Kit) e acessibilidade universal.
+[![Model](https://img.shields.io/badge/Architecture-C4_Model-blueviolet?style=flat-square)](#-arquitetura-em-modelo-c4)
 
 ---
 
-## 🏛️ Arquitetura do Sistema
+## 📖 1. Visão Geral do Produto
 
-O aplicativo foi projetado sob os princípios de **Clean Architecture** e padrão **Repository**, operando de forma 100% autônoma e offline no dispositivo do usuário:
+### O que é o aplicativo?
+O **Culto Reader & Compreensão** é um aplicativo mobile *offline-first* desenvolvido em **React Native com Expo** e banco de dados relacional **SQLite local**. O sistema foi concebido como uma central de transcrição contínua, análise léxica bíblica e gestão corporativa de cultos e mensagens cristãs, operando sem nenhuma dependência de servidores em nuvem ou internet durante as reuniões.
+
+### Para que serve o aplicativo?
+O aplicativo atende a três frentes principais de impacto prático:
+
+1. **Gestão e Preservação de Mensagens (CRUD Completo com Paginação):**
+   Permite cadastrar, consultar, atualizar e excluir registros de cultos de forma paginada e instantânea, armazenando pregações, pregadores, datas, resumos, tags temáticas e transcrições integrais diretamente no chip de armazenamento do smartphone.
+2. **Acessibilidade Universal e Inclusão Sensorial:**
+   * **Pessoas com deficiência auditiva:** Acompanham a pregação lendo a transcrição em tempo real na tela.
+   * **Pessoas com deficiência visual ou baixa visão:** O aplicativo sintetiza em voz alta (TTS) com entonação bíblica humana natural e vozes neurais brasileiras, além de controle de escala de fonte (100% a 200%).
+   * **Pessoas com daltonismo:** Modos de alto contraste e filtros específicos para Protanopia, Deuteranopia e Tritanopia.
+3. **Tradução Simultânea para Estrangeiros (On-Device):**
+   Permite que visitantes estrangeiros ou turistas acompanhem cultos ministrados em Português lendo a tradução em Inglês, Espanhol ou Francês ou ouvindo cada frase traduzida diretamente em seus fones de ouvido (**Tradução Simultânea Audível estilo ONU**), com inteligência artificial rodando 100% no chip do celular (Google ML Kit).
+4. **Detecção Bíblica Inteligente:**
+   Analisa o áudio captado pelo microfone e identifica passagens bíblicas citadas pelo orador (ex: *João 3:16*, *Romanos 8:28*, *Salmo 23*), gerando links interativos para leitura da Bíblia offline no texto oficial (Almeida Revista e Atualizada).
+
+---
+
+## 🏛️ 2. Arquitetura em Modelo C4
+
+Para documentar a estrutura com rigor de engenharia de software, o projeto adota o **Modelo C4** (Contexto, Contêineres, Componentes e Código).
+
+---
+
+### Nível 1: Diagrama de Contexto de Sistema (Context)
+Descreve os usuários atendidos e as fronteiras físicas do dispositivo onde o aplicativo opera:
 
 ```mermaid
 flowchart TD
-    subgraph UI["Camada de Apresentação (Expo Router & Hooks)"]
-        A["app/(tabs)/index.tsx (CRUD Paginado)"]
-        B["app/(tabs)/live.tsx (Transcrição & Tradução)"]
-        C["app/(tabs)/calendar.tsx (Histórico de Cultos)"]
-        D["app/worship/form.tsx (Cadastro e Edição)"]
+    subgraph Usuarios["Atores & Usuários"]
+        Membro["Membro / Ouvinte da Comunidade"]
+        Estrangeiro["Visitante Estrangeiro / Turista"]
+        Deficiente["Pessoa com Deficiência (Visual/Auditiva)"]
+        Lider["Pastor / Pregador / Secretário"]
     end
 
-    subgraph Core["Serviços Especializados"]
-        E["TranscriptionService (Loop Contínuo de Fala)"]
-        F["BibleReferenceDetector (Análise Léxica de Versículos)"]
-        G["TranslationService (Google ML Kit On-Device)"]
-        H["TTSService (Síntese de Voz Humana Acessível)"]
+    subgraph Sistema["Culto Reader & Compreensão (Mobile App)"]
+        App["Aplicativo Móvel React Native / Expo\n(Opera 100% On-Device no Smartphone)"]
     end
 
-    subgraph Data["Persistência SQLite Local (expo-sqlite)"]
-        I["WorshipRepository (CRUD de Cultos Paginado)"]
-        J["BibleRepository (Consulta Offline ARA / NVI)"]
-        K["NotesRepository (Anotações do Membro)"]
-        L["Database Migrations & Seeds"]
+    subgraph Hardware["Sub-sistemas Físicos do Smartphone"]
+        Mic["Microfone do Aparelho / Fone Bluetooth"]
+        Speaker["Alto-falante / Fone de Ouvido"]
+        Storage["Armazenamento Interno (Flash / SQLite)"]
     end
 
-    UI --> Core
-    Core --> Data
+    Lider -->|"Ministra pregação por voz"| Mic
+    Mic -->|"Stream de áudio contínuo"| App
+    App -->|"Grava e consulta cultos e Bíblias"| Storage
+    App -->|"Exibe transcrição, versículos e CRUD paginado"| Membro
+    App -->|"Lê mensagem em voz alta (TTS)"| Speaker
+    Speaker -->|"Áudio acessível e tradução no fone"| Deficiente
+    Speaker -->|"Tradução simultânea no fone"| Estrangeiro
+    App -->|"Gerencia cultos (Criar, Editar, Excluir)"| Lider
 ```
 
 ---
 
-## 🚀 Funcionalidades Principais
+### Nível 2: Diagrama de Contêineres (Containers)
+Evidencia os subsistemas de runtime e as tecnologias empregadas no celular:
 
-### 1. Sistema CRUD Completo com Paginação (SQLite)
-* **CREATE**: Formulário dedicado com validações, tags, temas, pregador e suporte a ditado por voz, além de fechamento direto da tela ao vivo.
-* **READ**: Listagem em cards com paginação real via SQL (`LIMIT ? OFFSET ?`), busca em tempo real por termos (`LIKE %termo%`) e navegação por calendário.
-* **UPDATE**: Edição reativa com carregamento instantâneo do registro existente.
-* **DELETE**: Exclusão segura com caixa de diálogo nativa de confirmação.
-* **Seeds Automáticos**: População de 11 cultos completos e versículos na primeira inicialização.
+```mermaid
+flowchart TD
+    subgraph Device["Ambiente do Smartphone Android"]
+        subgraph Runtime["Contêiner 1: Mobile Client (React Native + Hermes)"]
+            JS["Camada de Interface & Lógica de Negócio\n(React Native 0.76.7, Expo 52, TypeScript)"]
+        end
 
-### 2. Transcrição Contínua de Voz (1 a 4 horas)
-* Captação ininterrupta da pregação usando o motor nativo do Android (`expo-speech-recognition`).
-* Loop de auto-reconexão inteligente (150ms) que supera a limitação de pausas do sistema operacional.
-* Algoritmo de fusão por sobreposição (*merge overlapping*) que elimina gagueiras e duplicações.
+        subgraph NativeLayer["Contêiner 2: Android Native Runtime"]
+            SR["Android SpeechRecognizer API\n(expo-speech-recognition)"]
+            TTS["Android TextToSpeech Engine\n(expo-speech)"]
+            MLKit["Google ML Kit On-Device Translation\n(Modelos Neurais Locais NPU/CPU)"]
+        end
 
-### 3. Tradução Simultânea On-Device (Google ML Kit)
-* Tradução em tempo real de Português para Inglês, Espanhol ou Francês sem gastar plano de dados.
-* **Modo Fone de Ouvido ("🎧 Fone: Ligado")**: Permite que membros ou visitantes estrangeiros ouçam cada frase traduzida diretamente em seus fones de ouvido enquanto o culto acontece.
+        subgraph Database["Contêiner 3: Banco de Dados Relacional"]
+            SQLite["SQLite Engine (expo-sqlite 15.1.4)\nArquivo: culto_reader.db\n(Migrations, Seeds, Índices)"]
+        end
+    end
 
-### 4. Detector Bíblico Instantâneo
-* Reconhecimento automático de passagens bíblicas citadas pelo pregador (ex: *João 3:16*, *Romanos 8:28*, *Salmo 23*).
-* Geração de chips clicáveis e gaveta de versículos com busca instantânea no banco local da Bíblia (Almeida Revista e Atualizada).
-
-### 5. Acessibilidade Universal
-* **Leitura em Voz Alta (TTS)** com cadência bíblica humana e vozes neurais brasileiras.
-* **Filtros para Daltonismo**: Protanopia, Deuteranopia e Tritanopia com alto contraste.
-* **Escala de Fontes**: Dimensionamento dinâmico de 100% até 200%.
-
----
-
-## 🛠️ Stack Tecnológica
-
-* **Framework:** [React Native](https://reactnative.dev/) (v0.76.7) com [Expo](https://expo.dev/) (SDK 52)
-* **Linguagem:** [TypeScript](https://www.typescriptlang.org/) (v5.3.3)
-* **Roteamento:** [Expo Router](https://docs.expo.dev/router/introduction/) (File-based Routing)
-* **Banco de Dados:** [SQLite](https://docs.expo.dev/versions/latest/sdk/sqlite/) (`expo-sqlite` v15.1.4)
-* **Reconhecimento de Voz:** `expo-speech-recognition`
-* **Síntese de Voz:** `expo-speech`
-* **Tradução:** Google ML Kit Translate On-Device
-* **Ícones:** `lucide-react-native`
+    JS -->|"Reconhecimento contínuo de voz"| SR
+    JS -->|"Síntese fonética bíblica"| TTS
+    JS -->|"Tradução simultânea sem internet"| MLKit
+    JS -->|"Queries parametrizadas, CRUD e Paginação"| SQLite
+```
 
 ---
 
-## 📦 Como Executar o Projeto
+### Nível 3: Diagrama de Componentes (Components)
+Detalhamento interno dos componentes da aplicação móvel:
+
+```mermaid
+flowchart TD
+    subgraph Presentation["Camada de Apresentação (Screens & Modals)"]
+        IndexScreen["CultosCrudScreen\n(CRUD Paginado, Busca, Cards)"]
+        LiveScreen["LiveTranscriptionScreen\n(Painel Ao Vivo, Palavras Clicáveis)"]
+        WorshipFormScreen["WorshipFormScreen\n(Formulário de Cadastro/Edição)"]
+        CalendarScreen["CalendarScreen\n(Histórico Temporal de Cultos)"]
+        BibleScreen["BookBibleScreen\n(Leitor Bíblico Offline)"]
+    end
+
+    subgraph Controllers["Camada de Hooks & Controladores"]
+        useLiveSession["useLiveSession\n(Gestão de Sessão, Auto-Save 30s)"]
+        useSimultaneousTranslation["useSimultaneousTranslation\n(Streaming e Tradução no Fone)"]
+        useWorshipForm["useWorshipForm\n(Validação e Mutação do Culto)"]
+        useAccessibility["useAccessibility\n(Temas, Daltonismo e TTS)"]
+    end
+
+    subgraph CoreServices["Camada de Serviços Especializados"]
+        TranscriptionService["TranscriptionService\n(Loop Contínuo, Anti-duplicação)"]
+        BibleReferenceDetector["BibleReferenceDetector\n(Análise Léxica de Versículos)"]
+        TranslationService["TranslationService\n(Bridge ML Kit On-Device)"]
+        TTSService["TTSService\n(Normalizador Fonético e Vozes Neurais)"]
+        BibleManager["BibleManager\n(Catálogo Canônico Multilíngue)"]
+    end
+
+    subgraph DataRepositories["Camada de Acesso a Dados (Repositories)"]
+        WorshipRepository["WorshipRepository\n(create, findPaginated, update, delete)"]
+        BibleRepository["BibleRepository\n(busca de versículos ARA e NVI)"]
+        NotesRepository["NotesRepository\n(anotações pessoais de estudo)"]
+        DBConnection["DatabaseConnection & Migrations\n(Inicialização e Seeds)"]
+    end
+
+    Presentation --> Controllers
+    Controllers --> CoreServices
+    Controllers --> DataRepositories
+    CoreServices --> DataRepositories
+    DataRepositories --> DBConnection
+```
+
+---
+
+### Nível 4: Diagrama de Código e Modelo Relacional (Code / Schema)
+Estrutura física das tabelas relacionais mantidas no SQLite:
+
+```mermaid
+erDiagram
+    WORSHIP_SERVICES ||--o{ NOTES : "possui anotações"
+    BIBLE_VERSIONS ||--o{ BIBLE_VERSES : "contém versículos"
+
+    WORSHIP_SERVICES {
+        INTEGER id PK "Autoincrement"
+        TEXT title "Título ou tema do culto"
+        TEXT preacher "Nome do pastor / pregador"
+        TEXT service_date "Data do culto (YYYY-MM-DD)"
+        TEXT summary "Resumo da pregação"
+        TEXT full_transcript "Transcrição textual completa"
+        TEXT tags "Tags temáticas separadas por vírgula"
+        TEXT created_at "Timestamp de criação"
+        TEXT updated_at "Timestamp de atualização"
+    }
+
+    NOTES {
+        INTEGER id PK "Autoincrement"
+        INTEGER worship_id FK "Vínculo com culto"
+        TEXT selected_text "Palavra ou trecho selecionado"
+        TEXT note_text "Anotação ou reflexão pessoal"
+        TEXT color_tag "Etiqueta de cor (marca-texto)"
+        TEXT created_at "Timestamp de criação"
+    }
+
+    BIBLE_VERSIONS {
+        TEXT code PK "Código da versão (ARA, NVI)"
+        TEXT name "Nome por extenso da versão"
+        TEXT language "Locale do idioma (pt-BR)"
+        INTEGER is_default "Flag de versão padrão (0 ou 1)"
+    }
+
+    BIBLE_VERSES {
+        INTEGER id PK "Autoincrement"
+        TEXT version_code FK "Referência à versão"
+        TEXT book "Nome do livro bíblico"
+        INTEGER chapter "Número do capítulo"
+        INTEGER verse "Número do versículo"
+        TEXT text "Texto sagrado canônico"
+    }
+```
+
+---
+
+## 🎯 3. Matriz de Atendimento às Exigências Acadêmicas
+
+| Requisito do Projeto | Implementação Técnica no Código | Localização no Repositório |
+| :--- | :--- | :--- |
+| **Tecnologia: React Native + Expo + SQLite** | React Native 0.76.7, Expo 52 e `expo-sqlite` 15.1.4 assíncrono. | `package.json`, `src/database/connection.ts` |
+| **CRUD: CREATE (Cadastrar)** | Cadastro estruturado via formulário dedicado e auto-geração a partir do rascunho da Tela Ao Vivo. | `app/worship/form.tsx`, `WorshipRepository.create()` |
+| **CRUD: READ (Consultar)** | Listagem paginada no SQLite (`LIMIT ? OFFSET ?`), busca em tempo real com `LIKE %term%` e filtro por data. | `app/(tabs)/index.tsx`, `WorshipRepository.findPaginated()` |
+| **CRUD: UPDATE (Editar)** | Edição completa de todos os campos com preenchimento reativo do registro existente. | `app/worship/form.tsx`, `WorshipRepository.update()` |
+| **CRUD: DELETE (Excluir)** | Exclusão com confirmação nativa (`Alert.alert`) e remoção física no banco. | `app/(tabs)/index.tsx`, `WorshipRepository.delete()` |
+| **Pelo menos 10 registros** | População automática (*seeding*) de **11 cultos completos** com metadados e versículos citados na primeira abertura. | `src/database/seeds.ts` |
+| **Paginação na listagem** | Controle de paginação com navegação fluida de páginas, indicação de total de registros e páginas. | `src/components/PaginationControls.tsx` |
+| **Persistência garantida** | Arquivo SQLite mantido no disco flash do Android, preservando dados após fechar ou reiniciar o aparelho. | `src/database/migrations.ts` |
+
+---
+
+## 💻 4. Como Executar o Projeto
 
 ### Pré-requisitos
-* [Node.js](https://nodejs.org/) (versão LTS recomendada: 18 ou superior)
-* [Android Studio](https://developer.android.com/studio) & SDK Android configurado
+* [Node.js](https://nodejs.org/) (v18 ou superior)
+* [Android Studio](https://developer.android.com/studio) & SDK Android (API 34/35)
 * [JDK 17](https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html)
 
-### Passo a Passo
+### Instalação e Execução
 
 1. **Clonar o repositório:**
    ```bash
@@ -100,25 +221,25 @@ flowchart TD
    cd CultoReader_Mobile
    ```
 
-2. **Instalar dependências:**
+2. **Instalar as dependências do ecossistema Expo:**
    ```bash
    npm install
    ```
 
-3. **Executar em modo desenvolvimento:**
+3. **Executar em modo desenvolvimento no emulador ou dispositivo físico:**
    ```bash
    npx expo run:android
    ```
 
-4. **Gerar APK Release standalone:**
+4. **Gerar pacote APK Release standalone (100% autônomo):**
    ```bash
    cd android
    .\gradlew assembleRelease
    ```
-   *O arquivo `.apk` final será gerado em `android/app/build/outputs/apk/release/`.*
+   *O executável otimizado estará disponível em `android/app/build/outputs/apk/release/`.*
 
 ---
 
 ## 📄 Licença
 
-Este projeto é desenvolvido para fins educacionais e de acessibilidade comunitária sob a licença [MIT](LICENSE).
+Projeto desenvolvido para fins acadêmicos e de acessibilidade comunitária sob a licença [MIT](LICENSE).
