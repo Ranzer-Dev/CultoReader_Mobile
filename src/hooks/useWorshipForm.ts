@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { WorshipRepository } from '../database/repositories/WorshipRepository';
+import { useLanguage } from '../i18n';
 
 interface UseWorshipFormProps {
   id?: string;
@@ -8,6 +9,7 @@ interface UseWorshipFormProps {
 }
 
 export function useWorshipForm({ id, onSuccess }: UseWorshipFormProps) {
+  const { t } = useLanguage();
   const isEditing = Boolean(id);
 
   const [loading, setLoading] = useState(false);
@@ -55,15 +57,15 @@ export function useWorshipForm({ id, onSuccess }: UseWorshipFormProps) {
 
   const handleSave = async () => {
     if (!title.trim()) {
-      Alert.alert('Campo Obrigatório', 'Por favor, informe o tema/título do culto.');
+      Alert.alert(t.worship.requiredField, t.worship.title);
       return;
     }
     if (!preacher.trim()) {
-      Alert.alert('Campo Obrigatório', 'Por favor, informe o nome do pastor/preletor.');
+      Alert.alert(t.worship.requiredField, t.worship.preacher);
       return;
     }
     if (!serviceDate.trim()) {
-      Alert.alert('Campo Obrigatório', 'Por favor, informe a data do culto (AAAA-MM-DD).');
+      Alert.alert(t.worship.requiredField, t.worship.date);
       return;
     }
 
@@ -78,7 +80,7 @@ export function useWorshipForm({ id, onSuccess }: UseWorshipFormProps) {
           full_transcript: fullTranscript,
           tags
         });
-        Alert.alert('Sucesso', 'Culto atualizado com sucesso!');
+        Alert.alert(t.common.success, t.worship.updatedSuccess);
       } else {
         await WorshipRepository.create({
           title,
@@ -88,11 +90,11 @@ export function useWorshipForm({ id, onSuccess }: UseWorshipFormProps) {
           full_transcript: fullTranscript,
           tags
         });
-        Alert.alert('Sucesso', 'Novo culto cadastrado com sucesso!');
+        Alert.alert(t.common.success, t.worship.createdSuccess);
       }
       onSuccess();
     } catch (err: any) {
-      Alert.alert('Erro ao Salvar', err.message);
+      Alert.alert(t.common.error, err.message);
     } finally {
       setSaving(false);
     }

@@ -10,56 +10,86 @@ export interface HumanFriendlyVoice {
   badge?: string;
 }
 
+const UNICODE_LETTER_CLASS = 'A-Za-zÀ-ÖØ-öø-ÿ';
+
 export class TTSService {
   private static isSpeakingNow = false;
-  private static cachedVoiceId: string | null = null;
-  private static hasCheckedVoices = false;
+  private static cachedVoiceByLang = new Map<string, string>();
+  private static userPreferredVoiceByLang = new Map<string, string>();
+  private static activeResolve: (() => void) | null = null;
+  private static speakGeneration = 0;
+
+  private static resolveActive(): void {
+    if (this.activeResolve) {
+      const fn = this.activeResolve;
+      this.activeResolve = null;
+      fn();
+    }
+  }
+
+  private static normalizeLangKey(langCode: string = 'pt-BR'): string {
+    const clean = (langCode || 'pt-BR').trim().toLowerCase().replace('_', '-');
+    if (clean.startsWith('en')) return 'en-US';
+    if (clean.startsWith('es')) return 'es-ES';
+    if (clean.startsWith('fr')) return 'fr-FR';
+    if (clean.startsWith('sw')) return 'sw-KE';
+    if (clean.startsWith('ts')) return 'pt-BR';
+    if (clean.startsWith('pt-mz')) return 'pt-BR';
+    if (clean.startsWith('pt')) return 'pt-BR';
+    return 'pt-BR';
+  }
 
   /**
-   * Converte identificadores técnicos do Android (ex: 'pt-br-x-afs-local') em nomes humanos elegantes e claros.
+   * Converte identificadores técnicos do Android (ex: 'pt-br-x-pte-local') em nomes humanos claros.
    */
-  static formatFriendlyVoice(rawId: string, rawName: string, quality?: string): HumanFriendlyVoice {
+  static formatFriendlyVoice(
+    rawId: string,
+    rawName: string,
+    quality?: string,
+    langLabel: string = 'Português'
+  ): HumanFriendlyVoice {
     const id = (rawId || '').toLowerCase();
     const name = (rawName || '').toLowerCase();
+    const isLocal = id.includes('-local') || !id.includes('-network');
 
-    // 1. Vozes Modernas Expressivas e Naturais (confirmadas como as mais humanas no aparelho)
+    // 1. Vozes Modernas Expressivas e Naturais em Português do Brasil
     if (id.includes('pte') || name.includes('pte')) {
       return {
         identifier: rawId,
-        displayName: 'Voz 1 Feminina (Expressiva)',
+        displayName: `Voz 1 Feminina (Expressiva)${isLocal ? '' : ' • Online'}`,
         description: 'Voz feminina suave, reflexiva e com excelente entonação para leitura bíblica.',
         gender: 'female',
         isNeural: true,
-        isRecommended: true,
-        badge: '✨ Mais Humana'
+        isRecommended: isLocal,
+        badge: isLocal ? '✨ Offline HD' : 'Online'
       };
     }
     if (id.includes('yif') || name.includes('yif')) {
       return {
         identifier: rawId,
-        displayName: 'Voz 2 Masculina (Natural)',
+        displayName: `Voz 2 Masculina (Natural)${isLocal ? '' : ' • Online'}`,
         description: 'Voz masculina fluida e natural, com dicção limpa e sem tom robótico.',
         gender: 'male',
         isNeural: true,
-        isRecommended: true,
-        badge: '✨ Mais Humana'
+        isRecommended: isLocal,
+        badge: isLocal ? '✨ Offline HD' : 'Online'
       };
     }
     if (id.includes('jab') || name.includes('jab')) {
       return {
         identifier: rawId,
-        displayName: 'Voz 3 Masculina (Grave / Firme)',
+        displayName: `Voz 3 Masculina (Grave / Firme)${isLocal ? '' : ' • Online'}`,
         description: 'Voz masculina solene com registro mais encorpado.',
         gender: 'male',
         isNeural: false,
-        isRecommended: true,
-        badge: 'Recomendada'
+        isRecommended: isLocal,
+        badge: isLocal ? 'Offline' : 'Online'
       };
     }
     if (id.includes('jbf') || name.includes('jbf')) {
       return {
         identifier: rawId,
-        displayName: 'Voz 4 Feminina (Padrão)',
+        displayName: `Voz 4 Feminina (Padrão)${isLocal ? '' : ' • Online'}`,
         description: 'Voz feminina padrão do sistema com pronúncia clara.',
         gender: 'female',
         isNeural: false,
@@ -69,8 +99,8 @@ export class TTSService {
     if (id.includes('ptd') || name.includes('ptd')) {
       return {
         identifier: rawId,
-        displayName: 'Voz 5 Masculina (Google Tradutor Clássico)',
-        description: 'Voz masculina sintetizada básica do Google.',
+        displayName: `Voz 5 Masculina (Clássica)${isLocal ? '' : ' • Online'}`,
+        description: 'Voz masculina sintetizada clássica do Google.',
         gender: 'male',
         isNeural: false,
         isRecommended: false
@@ -79,221 +109,350 @@ export class TTSService {
     if (id.includes('afs') || name.includes('afs')) {
       return {
         identifier: rawId,
-        displayName: 'Voz 6 Feminina (Google Tradutor Clássico)',
-        description: 'Voz feminina sintetizada básica do Google.',
+        displayName: `Voz 6 Feminina (Clássica)${isLocal ? '' : ' • Online'}`,
+        description: 'Voz feminina sintetizada clássica do Google.',
         gender: 'female',
         isNeural: false,
         isRecommended: false
       };
     }
 
-    // 2. Classificação para outros sintetizadores (Samsung, Xiaomi, etc.)
+    // 2. Classificação genérica multilíngue (EN, ES, FR, SW, Samsung, Xiaomi, etc.)
     const isFemale = id.includes('female') || id.includes('fem') || name.includes('female') || name.includes('mulher');
     const isMale = id.includes('male') || id.includes('masc') || name.includes('male') || name.includes('homem');
     const isNeural = quality === 'Enhanced' || id.includes('neural') || id.includes('natural') || name.includes('neural');
 
     const gender = isFemale ? 'female' : isMale ? 'male' : 'neutral';
-    const genderLabel = isFemale ? 'Feminina' : isMale ? 'Masculina' : 'Sistema';
-    const cleanLabel = rawName ? rawName.replace(/^pt[-_]br[-_]?/i, '').replace(/[-_]local/i, '').trim() : '';
+    const genderLabel = isFemale ? 'F' : isMale ? 'M' : '';
+    const cleanCode = (rawName || rawId)
+      .replace(/^[a-z]{2}[-_][a-z]{2}[-_]?x?[-_]?/i, '')
+      .replace(/[-_](local|network)$/i, '')
+      .trim()
+      .toUpperCase();
 
     return {
       identifier: rawId,
-      displayName: `Voz ${genderLabel} ${cleanLabel ? `(${cleanLabel})` : '(Português)'}`,
-      description: isNeural ? 'Voz com processamento neural aprimorado.' : 'Voz instalada no aparelho.',
+      displayName: `${langLabel}${genderLabel ? ` (${genderLabel})` : ''}${cleanCode ? ` • ${cleanCode}` : ''}`,
+      description: isLocal
+        ? (isNeural ? 'Offline HD' : 'Offline')
+        : 'Online',
       gender,
       isNeural,
-      isRecommended: isNeural,
-      badge: isNeural ? 'HD' : undefined
+      isRecommended: isLocal && (isNeural || !id.endsWith('-language')),
+      badge: isLocal ? (isNeural ? 'Offline HD' : 'Offline') : 'Online'
     };
   }
 
+  /**
+   * Detecta o idioma do texto de forma segura para Unicode (sem quebrar com acentos).
+   * Usado apenas como fallback quando options.language não é informado.
+   */
   static detectTextLanguage(text: string): string {
-    const clean = (text || '').toLowerCase();
-    const enWords = clean.match(/\b(the|and|of|to|in|you|for|is|that|with|lord|god|jesus|shall|unto|said|he|she|we|they|chapter|verse|bible|church|faith|grace)\b/gi) || [];
-    const ptWords = clean.match(/\b(o|a|os|as|de|do|da|dos|das|em|no|na|nos|nas|para|que|com|senhor|deus|jesus|disse|ele|ela|nós|eles|cap[ií]tulo|vers[ií]culo|b[ií]blia|igreja|f[eé]|gra[cç]a)\b/gi) || [];
-    const esWords = clean.match(/\b(el|la|los|las|del|en|para|que|con|señor|dios|dijo|por|un|una|cap[ií]tulo|vers[ií]culo|iglesia)\b/gi) || [];
+    const clean = (text || '').normalize('NFC').toLowerCase();
+    const tokens = clean.match(/[a-zà-öø-ÿ]+/g) || [];
+    if (tokens.length === 0) return 'pt-BR';
 
-    if (enWords.length > ptWords.length && enWords.length > esWords.length && enWords.length >= 2) {
-      return 'en-US';
+    const ptSet = new Set(['o', 'a', 'os', 'as', 'de', 'do', 'da', 'dos', 'das', 'em', 'no', 'na', 'nos', 'nas', 'para', 'que', 'com', 'senhor', 'deus', 'disse', 'ele', 'ela', 'nós', 'eles', 'capítulo', 'versículo', 'bíblia', 'igreja', 'fé', 'graça', 'não', 'são', 'irmãos', 'coração', 'oração', 'também', 'porém', 'você']);
+    const enSet = new Set(['the', 'and', 'of', 'to', 'in', 'you', 'for', 'is', 'that', 'with', 'lord', 'god', 'shall', 'unto', 'said', 'he', 'she', 'we', 'they', 'chapter', 'verse', 'bible', 'church', 'faith', 'grace', 'not', 'are', 'from', 'his', 'her', 'will', 'this']);
+    const esSet = new Set(['el', 'la', 'los', 'las', 'del', 'en', 'para', 'que', 'con', 'señor', 'dios', 'dijo', 'por', 'un', 'una', 'capítulo', 'versículo', 'iglesia', 'también', 'pero', 'ellos', 'porque', 'todo', 'todos', 'corazón']);
+    const frSet = new Set(['le', 'la', 'les', 'des', 'du', 'et', 'en', 'pour', 'que', 'avec', 'seigneur', 'dieu', 'dit', 'par', 'un', 'une', 'chapitre', 'verset', 'église', 'foi', 'grâce', 'dans', 'nous', 'vous', 'sont', 'mais']);
+    const swSet = new Set(['na', 'ya', 'wa', 'kwa', 'ni', 'bwana', 'mungu', 'yesu', 'sura', 'mstari', 'biblia', 'kanisa', 'imani', 'neema', 'katika', 'yeye', 'wote', 'hata']);
+
+    let pt = 0, en = 0, es = 0, fr = 0, sw = 0;
+    for (const tok of tokens) {
+      if (ptSet.has(tok)) pt++;
+      if (enSet.has(tok)) en++;
+      if (esSet.has(tok)) es++;
+      if (frSet.has(tok)) fr++;
+      if (swSet.has(tok)) sw++;
     }
-    if (esWords.length > ptWords.length && esWords.length > enWords.length && esWords.length >= 2) {
-      return 'es-ES';
+
+    const scores: { lang: string; count: number }[] = [
+      { lang: 'pt-BR', count: pt },
+      { lang: 'en-US', count: en },
+      { lang: 'es-ES', count: es },
+      { lang: 'fr-FR', count: fr },
+      { lang: 'sw-KE', count: sw }
+    ].sort((a, b) => b.count - a.count);
+
+    if (scores[0].count >= 2 && scores[0].count > scores[1].count) {
+      return scores[0].lang;
     }
     return 'pt-BR';
   }
 
   /**
-   * Normaliza o texto antes da leitura offline pelo sintetizador respeitando o idioma ativo
+   * Limpeza segura de caracteres gráficos, marcadores hebraicos e normalização Unicode NFC
+   * para garantir dicção perfeita de acentos (ã, ç, á, à, â, é, ê, í, ó, ô, õ, ú) em qualquer idioma.
+   */
+  private static cleanCommonSpeechArtifacts(text: string): string {
+    return (text || '')
+      // 1. Garante forma canônica NFC para acentos compostos (nunca envia diacríticos soltos ao TTS)
+      .normalize('NFC')
+      // 2. Remove letras hebraicas de cabeçalho (ex: Salmo 119 na NVI) e caracteres invisíveis
+      .replace(/[\u0590-\u05FF\u200B-\u200D\uFEFF]/g, '')
+      // 3. Remove aspas, asteriscos, jogo da velha e acentos soltos/isolados que o TTS soletraria
+      .replace(/["“”‘’«»#*_~`´¨^]/g, '')
+      // 4. Converte reticências e travessões em pausas naturais de respiração
+      .replace(/…/g, '. ')
+      .replace(/\s*[—–]\s*/g, ', ')
+      // 5. Espaçamento natural após pontuações e eliminação de pontuação duplicada (ex: ". ," ou ". .")
+      .replace(/\.\s*,/g, ', ')
+      .replace(/,\s*\./g, '. ')
+      .replace(/(?:\.\s*){2,}/g, '. ')
+      .replace(/\s*,\s*/g, ', ')
+      .replace(/\s*\.\s*/g, '. ')
+      .replace(/\s*;\s*/g, ', ')
+      .replace(/\s*:\s*/g, ', ')
+      .replace(/\s*!\s*/g, '! ')
+      .replace(/\s*\?\s*/g, '? ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Normaliza o texto antes da leitura offline pelo sintetizador respeitando o idioma ativo.
+   * ATENÇÃO: Usa fronteiras Unicode-safe (nunca \b ASCII) para JAMAI corromper palavras acentuadas
+   * como "irmãos", "mãos", "bênçãos", "coração", "apóstolo", "glória", "amém", "até", "exército".
    */
   static normalizeForSpeech(text: string, lang: string = 'pt-BR'): string {
     if (!text) return '';
 
     const cleanLang = (lang || 'pt-BR').toLowerCase();
+    // Garante Unicode NFC desde o primeiro instante
+    let normalized = text.normalize('NFC');
 
     // 1. Normalização para Inglês
     if (cleanLang.startsWith('en')) {
-      let enNorm = text;
-      enNorm = enNorm.replace(/\s*[\(\[](KJV|NIV|ESV|NKJV|NVI|ARA)[\)\]]/gi, '');
-      enNorm = enNorm.replace(/\b([A-Za-z]+)\s+(\d+)[:.](\d+)(?:\s*[-–to]+\s*(\d+))?\b/g, (match, book, cap, vStart, vEnd) => {
-        if (vEnd) {
-          return `${book}, chapter ${cap}, verses ${vStart} to ${vEnd}. `;
-        }
-        return `${book}, chapter ${cap}, verse ${vStart}. `;
-      });
-      enNorm = enNorm.replace(/\b(\d+)[:.](\d+)\b/g, 'chapter $1, verse $2. ');
-      enNorm = enNorm.replace(/["“”«»#*_~`]/g, '');
-      enNorm = enNorm.replace(/\s*,\s*/g, ', ');
-      enNorm = enNorm.replace(/\s*\.\s*/g, '. ');
-      enNorm = enNorm.replace(/\s{2,}/g, ' ');
-      return enNorm.trim();
+      normalized = normalized.replace(/\s*[\(\[](KJV|NIV|ESV|NKJV|NVI|ARA|ACF|RVR|LSG)[\)\]]/gi, '');
+      normalized = normalized.replace(
+        new RegExp(`(^|[^${UNICODE_LETTER_CLASS}])([${UNICODE_LETTER_CLASS}]+)\\s+(\\d+)\\s*:\\s*(\\d+)(?:\\s*[-–]\\s*(\\d+))?(?=$|[^0-9])`, 'g'),
+        (_, pre, book, cap, vStart, vEnd) =>
+          vEnd
+            ? `${pre}${book}, chapter ${cap}, verses ${vStart} to ${vEnd}. `
+            : `${pre}${book}, chapter ${cap}, verse ${vStart}. `
+      );
+      return this.cleanCommonSpeechArtifacts(normalized);
     }
 
     // 2. Normalização para Espanhol
     if (cleanLang.startsWith('es')) {
-      let esNorm = text;
-      esNorm = esNorm.replace(/\s*[\(\[](RVR|NVI|LBLA|NTV)[\)\]]/gi, '');
-      esNorm = esNorm.replace(/\b([A-Za-zÀ-ÿ]+)\s+(\d+)[:.](\d+)(?:\s*[-–ao]+\s*(\d+))?\b/g, (match, book, cap, vStart, vEnd) => {
-        if (vEnd) {
-          return `${book}, capítulo ${cap}, versículos ${vStart} al ${vEnd}. `;
-        }
-        return `${book}, capítulo ${cap}, versículo ${vStart}. `;
-      });
-      esNorm = esNorm.replace(/\b(\d+)[:.](\d+)\b/g, 'capítulo $1, versículo $2. ');
-      esNorm = esNorm.replace(/["“”«»#*_~`]/g, '');
-      esNorm = esNorm.replace(/\s*,\s*/g, ', ');
-      esNorm = esNorm.replace(/\s*\.\s*/g, '. ');
-      esNorm = esNorm.replace(/\s{2,}/g, ' ');
-      return esNorm.trim();
+      normalized = normalized.replace(/\s*[\(\[](RVR|NVI|LBLA|NTV|KJV|ARA)[\)\]]/gi, '');
+      normalized = normalized.replace(
+        new RegExp(`(^|[^${UNICODE_LETTER_CLASS}])([${UNICODE_LETTER_CLASS}]+)\\s+(\\d+)\\s*:\\s*(\\d+)(?:\\s*[-–]\\s*(\\d+))?(?=$|[^0-9])`, 'g'),
+        (_, pre, book, cap, vStart, vEnd) =>
+          vEnd
+            ? `${pre}${book}, capítulo ${cap}, versículos ${vStart} al ${vEnd}. `
+            : `${pre}${book}, capítulo ${cap}, versículo ${vStart}. `
+      );
+      return this.cleanCommonSpeechArtifacts(normalized);
     }
 
-    let normalized = text;
+    // 3. Normalização para Francês
+    if (cleanLang.startsWith('fr')) {
+      normalized = normalized.replace(/\s*[\(\[](LSG|BDS|S21|NVI|KJV|ARA)[\)\]]/gi, '');
+      normalized = normalized.replace(
+        new RegExp(`(^|[^${UNICODE_LETTER_CLASS}])([${UNICODE_LETTER_CLASS}]+)\\s+(\\d+)\\s*:\\s*(\\d+)(?:\\s*[-–]\\s*(\\d+))?(?=$|[^0-9])`, 'g'),
+        (_, pre, book, cap, vStart, vEnd) =>
+          vEnd
+            ? `${pre}${book}, chapitre ${cap}, versets ${vStart} à ${vEnd}. `
+            : `${pre}${book}, chapitre ${cap}, verset ${vStart}. `
+      );
+      return this.cleanCommonSpeechArtifacts(normalized);
+    }
 
-    // 1. Remove siglas de versões bíblicas entre parênteses ou colchetes
-    normalized = normalized.replace(/\s*[\(\[](ARA|NVI|ARC|NAA|ACF|NVT)[\)\]]/gi, '');
+    // 4. Normalização para Suaíli
+    if (cleanLang.startsWith('sw')) {
+      normalized = normalized.replace(/\s*[\(\[](SWA|SW|NVI|KJV)[\)\]]/gi, '');
+      normalized = normalized.replace(
+        new RegExp(`(^|[^${UNICODE_LETTER_CLASS}])([${UNICODE_LETTER_CLASS}]+)\\s+(\\d+)\\s*:\\s*(\\d+)(?:\\s*[-–]\\s*(\\d+))?(?=$|[^0-9])`, 'g'),
+        (_, pre, book, cap, vStart, vEnd) =>
+          vEnd
+            ? `${pre}${book}, sura ya ${cap}, mistari ya ${vStart} hadi ${vEnd}. `
+            : `${pre}${book}, sura ya ${cap}, mstari wa ${vStart}. `
+      );
+      return this.cleanCommonSpeechArtifacts(normalized);
+    }
 
-    // 2. Mapeamento de abreviações bíblicas comuns para o nome por extenso
-    const abbrMap = [
-      { pattern: /\b(1|primeir[oa])\s*co(?:r(?:intios)?)?\b/gi, replacement: 'Primeira Coríntios' },
-      { pattern: /\b(2|segund[oa])\s*co(?:r(?:intios)?)?\b/gi, replacement: 'Segunda Coríntios' },
-      { pattern: /\b(1|primeir[oa])\s*ts\b/gi, replacement: 'Primeira Tessalonicenses' },
-      { pattern: /\b(2|segund[oa])\s*ts\b/gi, replacement: 'Segunda Tessalonicenses' },
-      { pattern: /\b(1|primeir[oa])\s*tm\b/gi, replacement: 'Primeira Timóteo' },
-      { pattern: /\b(2|segund[oa])\s*tm\b/gi, replacement: 'Segunda Timóteo' },
-      { pattern: /\b(1|primeir[oa])\s*pe(?:d(?:ro)?)?\b/gi, replacement: 'Primeira Pedro' },
-      { pattern: /\b(2|segund[oa])\s*pe(?:d(?:ro)?)?\b/gi, replacement: 'Segunda Pedro' },
-      { pattern: /\b(1|primeir[oa])\s*jo(?:a(?:o)?)?\b/gi, replacement: 'Primeira João' },
-      { pattern: /\b(2|segund[oa])\s*jo(?:a(?:o)?)?\b/gi, replacement: 'Segunda João' },
-      { pattern: /\b(3|terceir[oa])\s*jo(?:a(?:o)?)?\b/gi, replacement: 'Terceira João' },
-      { pattern: /\b(1|primeir[oa])\s*sm\b/gi, replacement: 'Primeiro Samuel' },
-      { pattern: /\b(2|segund[oa])\s*sm\b/gi, replacement: 'Segundo Samuel' },
-      { pattern: /\b(1|primeir[oa])\s*rs\b/gi, replacement: 'Primeiro Reis' },
-      { pattern: /\b(2|segund[oa])\s*rs\b/gi, replacement: 'Segundo Reis' },
-      { pattern: /\b(1|primeir[oa])\s*cr\b/gi, replacement: 'Primeiro Crônicas' },
-      { pattern: /\b(2|segund[oa])\s*cr\b/gi, replacement: 'Segundo Crônicas' },
-      { pattern: /\bgn\b/gi, replacement: 'Gênesis' },
-      { pattern: /\bex\b/gi, replacement: 'Êxodo' },
-      { pattern: /\blv\b/gi, replacement: 'Levítico' },
-      { pattern: /\bnm\b/gi, replacement: 'Números' },
-      { pattern: /\bdt\b/gi, replacement: 'Deuteronômio' },
-      { pattern: /\bsl\b/gi, replacement: 'Salmos' },
-      { pattern: /\bpv\b/gi, replacement: 'Provérbios' },
-      { pattern: /\bec\b/gi, replacement: 'Eclesiastes' },
-      { pattern: /\bct\b/gi, replacement: 'Cânticos' },
-      { pattern: /\bis\b/gi, replacement: 'Isaías' },
-      { pattern: /\bjr\b/gi, replacement: 'Jeremias' },
-      { pattern: /\blm\b/gi, replacement: 'Lamentações' },
-      { pattern: /\bez\b/gi, replacement: 'Ezequiel' },
-      { pattern: /\bdn\b/gi, replacement: 'Daniel' },
-      { pattern: /\bos\b/gi, replacement: 'Oséias' },
-      { pattern: /\bjl\b/gi, replacement: 'Joel' },
-      { pattern: /\bam\b/gi, replacement: 'Amós' },
-      { pattern: /\bjn\b/gi, replacement: 'Jonas' },
-      { pattern: /\bmq\b/gi, replacement: 'Miquéias' },
-      { pattern: /\bmt\b/gi, replacement: 'Mateus' },
-      { pattern: /\bmc\b/gi, replacement: 'Marcos' },
-      { pattern: /\blc\b/gi, replacement: 'Lucas' },
-      { pattern: /\bat\b/gi, replacement: 'Atos' },
-      { pattern: /\brm\b/gi, replacement: 'Romanos' },
-      { pattern: /\bgl\b/gi, replacement: 'Gálatas' },
-      { pattern: /\bef\b/gi, replacement: 'Efésios' },
-      { pattern: /\bfp\b/gi, replacement: 'Filipenses' },
-      { pattern: /\bcl\b/gi, replacement: 'Colossenses' },
-      { pattern: /\btt\b/gi, replacement: 'Tito' },
-      { pattern: /\bfm\b/gi, replacement: 'Filemom' },
-      { pattern: /\bhb\b/gi, replacement: 'Hebreus' },
-      { pattern: /\btg\b/gi, replacement: 'Tiago' },
-      { pattern: /\bjd\b/gi, replacement: 'Judas' },
-      { pattern: /\bap\b/gi, replacement: 'Apocalipse' }
+    // 5. Normalização para Português (pt-BR / pt-MZ)
+    // 5.1. Remove siglas de versões bíblicas entre parênteses ou colchetes
+    normalized = normalized.replace(/\s*[\(\[](ARA|NVI|ARC|NAA|ACF|NVT|KJV|RVR|LSG)[\)\]]/gi, '');
+
+    // 5.2. Expande abreviações bíblicas SOMENTE quando:
+    // - NÃO estiverem coladas a nenhuma letra Unicode (inclusive acentuadas: ã, ç, á, é, ó...)
+    // - E estiverem SEGUIDAS de número de capítulo (ex: "Sl 23:1", "Os 6:3", "1 Co 13:4")
+    // Isso garante 0% de corrupção em palavras normais como "os", "irmãos", "mãos", "apóstolo", "glória", "amém", "até", "exército".
+    const numberedAbbrs: [string, string][] = [
+      ['1\\s*co(?:r)?', 'Primeira Coríntios'],
+      ['2\\s*co(?:r)?', 'Segunda Coríntios'],
+      ['1\\s*ts', 'Primeira Tessalonicenses'],
+      ['2\\s*ts', 'Segunda Tessalonicenses'],
+      ['1\\s*tm', 'Primeira Timóteo'],
+      ['2\\s*tm', 'Segunda Timóteo'],
+      ['1\\s*pe(?:d)?', 'Primeira Pedro'],
+      ['2\\s*pe(?:d)?', 'Segunda Pedro'],
+      ['1\\s*jo', 'Primeira João'],
+      ['2\\s*jo', 'Segunda João'],
+      ['3\\s*jo', 'Terceira João'],
+      ['1\\s*sm', 'Primeiro Samuel'],
+      ['2\\s*sm', 'Segundo Samuel'],
+      ['1\\s*rs', 'Primeiro Reis'],
+      ['2\\s*rs', 'Segundo Reis'],
+      ['1\\s*cr', 'Primeiro Crônicas'],
+      ['2\\s*cr', 'Segundo Crônicas']
     ];
 
-    for (const { pattern, replacement } of abbrMap) {
-      normalized = normalized.replace(pattern, replacement);
+    for (const [abbr, full] of numberedAbbrs) {
+      const rx = new RegExp(`(^|[^${UNICODE_LETTER_CLASS}0-9])(${abbr})(?=\\s+\\d)`, 'gi');
+      normalized = normalized.replace(rx, `$1${full}`);
     }
 
-    // 3. Expande prefixos "1 [Livro]" e "2 [Livro]" para pronúncia natural
-    normalized = normalized.replace(/\b1\s+([A-Za-zÀ-ÿ]+)/g, (match, book) => {
-      const b = book.toLowerCase();
-      if (['pedro', 'timóteo', 'timoteo', 'samuel', 'reis', 'crônicas', 'cronicas'].some(x => b.startsWith(x))) {
-        return `Primeiro ${book}`;
-      }
-      return `Primeira ${book}`;
-    });
+    const singleAbbrs: [string, string][] = [
+      ['gn', 'Gênesis'],
+      ['ex', 'Êxodo'],
+      ['lv', 'Levítico'],
+      ['nm', 'Números'],
+      ['dt', 'Deuteronômio'],
+      ['js', 'Josué'],
+      ['jz', 'Juízes'],
+      ['rt', 'Rute'],
+      ['sl', 'Salmos'],
+      ['pv', 'Provérbios'],
+      ['ec', 'Eclesiastes'],
+      ['ct', 'Cânticos'],
+      ['is', 'Isaías'],
+      ['jr', 'Jeremias'],
+      ['lm', 'Lamentações'],
+      ['ez', 'Ezequiel'],
+      ['dn', 'Daniel'],
+      ['os', 'Oséias'],
+      ['jl', 'Joel'],
+      ['am', 'Amós'],
+      ['ob', 'Obadias'],
+      ['jn', 'Jonas'],
+      ['mq', 'Miquéias'],
+      ['na', 'Naum'],
+      ['hc', 'Habacuque'],
+      ['sf', 'Sofonias'],
+      ['ag', 'Ageu'],
+      ['zc', 'Zacarias'],
+      ['ml', 'Malaquias'],
+      ['mt', 'Mateus'],
+      ['mc', 'Marcos'],
+      ['lc', 'Lucas'],
+      ['jo', 'João'],
+      ['at', 'Atos'],
+      ['rm', 'Romanos'],
+      ['gl', 'Gálatas'],
+      ['ef', 'Efésios'],
+      ['fp', 'Filipenses'],
+      ['cl', 'Colossenses'],
+      ['tt', 'Tito'],
+      ['fm', 'Filemom'],
+      ['hb', 'Hebreus'],
+      ['tg', 'Tiago'],
+      ['jd', 'Judas'],
+      ['ap', 'Apocalipse']
+    ];
 
-    normalized = normalized.replace(/\b2\s+([A-Za-zÀ-ÿ]+)/g, (match, book) => {
-      const b = book.toLowerCase();
-      if (['pedro', 'timóteo', 'timoteo', 'samuel', 'reis', 'crônicas', 'cronicas'].some(x => b.startsWith(x))) {
-        return `Segundo ${book}`;
-      }
-      return `Segunda ${book}`;
-    });
+    for (const [abbr, full] of singleAbbrs) {
+      // Só expande abreviação de 2 letras quando seguida diretamente por capítulo (ex: "Sl 23", "Rm 8:28")
+      const rx = new RegExp(`(^|[^${UNICODE_LETTER_CLASS}])(${abbr})(?=\\s+\\d)`, 'gi');
+      normalized = normalized.replace(rx, `$1${full}`);
+    }
 
-    // 4. Converte citações bíblicas "Livro X:Y" ou "Livro X:Y-Z" para fala fluida humana
+    // 5.3. Expande "1/2/3 [Nome de Livro Bíblico]" com segurança (não altera "1 dia", "2 horas", etc.)
     normalized = normalized.replace(
-      /\b([A-Za-zÀ-ÿ]+)\s+(\d+)[:.](\d+)(?:\s*[-–aoe]+\s*(\d+))?\b/g,
-      (match, book, cap, vStart, vEnd) => {
-        if (vEnd) {
-          return `${book}, capítulo ${cap}, versículos ${vStart} a ${vEnd}. `;
-        }
-        return `${book}, capítulo ${cap}, versículo ${vStart}. `;
+      new RegExp(`(^|[^${UNICODE_LETTER_CLASS}0-9])(1|2|3)\\s+(Samuel|Reis|Cr[oô]nicas|Cor[ií]ntios|Tessalonicenses|Tim[oó]teo|Pedro|Jo[aã]o)(?=$|[^${UNICODE_LETTER_CLASS}])`, 'gi'),
+      (_, pre, num, book) => {
+        const b = book.toLowerCase();
+        const isMasc =
+          b.startsWith('samuel') ||
+          b.startsWith('reis') ||
+          b.startsWith('cr') ||
+          b.startsWith('tim') ||
+          b.startsWith('pedro');
+        if (num === '1') return `${pre}${isMasc ? 'Primeiro' : 'Primeira'} ${book}`;
+        if (num === '2') return `${pre}${isMasc ? 'Segundo' : 'Segunda'} ${book}`;
+        return `${pre}${isMasc ? 'Terceiro' : 'Terceira'} ${book}`;
       }
     );
 
-    // 5. Se sobrar formato número:número isolado, traduz para capítulo e versículo
-    normalized = normalized.replace(/\b(\d+)[:.](\d+)\b/g, 'capítulo $1, versículo $2. ');
+    // 5.4. Converte citações bíblicas "Livro X:Y" ou "Livro X:Y-Z" para fala fluida humana
+    normalized = normalized.replace(
+      new RegExp(`(^|[^${UNICODE_LETTER_CLASS}])([${UNICODE_LETTER_CLASS}]+)\\s+(\\d+)\\s*:\\s*(\\d+)(?:\\s*[-–]\\s*(\\d+))?(?=$|[^0-9])`, 'g'),
+      (_, pre, book, cap, vStart, vEnd) => {
+        if (vEnd) {
+          return `${pre}${book}, capítulo ${cap}, versículos ${vStart} a ${vEnd}. `;
+        }
+        return `${pre}${book}, capítulo ${cap}, versículo ${vStart}. `;
+      }
+    );
 
-    // 6. Limpa aspas e caracteres gráficos que causam tropeços mecânicos
-    normalized = normalized.replace(/["“”«»#*_~`]/g, '');
-
-    // 7. Normaliza pausas e respirações humanas: vírgula e ponto com espaçamento natural
-    normalized = normalized.replace(/\s*,\s*/g, ', ');
-    normalized = normalized.replace(/\s*\.\s*/g, '. ');
-    normalized = normalized.replace(/\s*;\s*/g, ', ');
-    normalized = normalized.replace(/\s*:\s*/g, ', ');
-    normalized = normalized.replace(/[ \t]+/g, ' ').trim();
-
-    return normalized;
+    // 5.5. Limpeza final NFC + pontuação natural
+    return this.cleanCommonSpeechArtifacts(normalized);
   }
 
   /**
-   * Identifica a melhor voz neural / de alta fidelidade em Português do Brasil (pt-BR).
-   * Prioriza vozes com modelos neurais e naturais do Google Speech Services (ex: pt-br-x-afs, pt-br-x-ptd),
-   * descartando rigorosamente o sintetizador mecânico antigo 'pt-br-language' (Google Translate antigo).
+   * Pontua uma voz do sistema priorizando vozes OFFLINE (-local) e neurais expressivas,
+   * evitando vozes -network que falham sem internet e sintetizadores robóticos legados.
    */
-  static async getBestLocalVoiceAsync(): Promise<string | undefined> {
-    if (this.cachedVoiceId) return this.cachedVoiceId;
+  private static scoreVoice(v: Speech.Voice, targetLocale: string): number {
+    const id = (v.identifier || '').toLowerCase();
+    const name = (v.name || '').toLowerCase();
+    const lang = (v.language || '').toLowerCase().replace('_', '-');
+    const qual = (v.quality || '').toString().toLowerCase();
+    const targetLower = targetLocale.toLowerCase();
 
+    let pts = 0;
+
+    // 1. Offline-first: SEMPRE prioriza vozes locais (-local) sobre vozes de rede (-network)
+    if (id.includes('-local') || name.includes('-local')) pts += 250;
+    if (id.includes('-network') || name.includes('-network')) pts -= 400;
+
+    // 2. Penalização severa de sintetizadores robóticos legados
+    if (id.endsWith('-language') || id.includes('_lang')) pts -= 500;
+    if (id.includes('pico') || name.includes('pico') || id.includes('espeak') || id.includes('smt')) pts -= 500;
+
+    // 3. Correspondência exata de região (ex: pt-br vs pt-pt, en-us vs en-in)
+    if (lang === targetLower || id.includes(targetLower)) pts += 120;
+
+    // 4. Preferências de naturalidade comprovadas no Google Speech Services para pt-BR
+    if (targetLower.startsWith('pt')) {
+      if (id.includes('pte') || name.includes('pte')) pts += 350;
+      if (id.includes('yif') || name.includes('yif')) pts += 300;
+      if (id.includes('jab') || name.includes('jab')) pts += 120;
+      if (id.includes('afs') || name.includes('afs')) pts -= 150;
+      if (id.includes('ptd') || name.includes('ptd')) pts -= 150;
+    }
+
+    if (qual.includes('enhanced') || qual.includes('high') || id.includes('neural') || id.includes('natural')) {
+      pts += 40;
+    }
+    if (id.includes('google') || name.includes('google')) pts += 20;
+
+    return pts;
+  }
+
+  private static async fetchVoicesSafe(): Promise<Speech.Voice[]> {
     try {
       let voices = await Speech.getAvailableVoicesAsync();
-      // Se o engine TTS ainda estiver em inicialização assíncrona, aguarda 400ms e tenta novamente
       if (!voices || voices.length === 0) {
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 350));
         voices = await Speech.getAvailableVoicesAsync();
       }
+      return voices || [];
+    } catch {
+      return [];
+    }
+  }
 
-      if (!voices || voices.length === 0) return undefined;
+  private static filterVoicesByLang(voices: Speech.Voice[], normalizedLocale: string): Speech.Voice[] {
+    const targetLower = normalizedLocale.toLowerCase();
+    const prefix = targetLower.split('-')[0];
 
-      // 1. Filtra estritamente por Português do Brasil
-      const ptBrVoices = voices.filter(v => {
+    if (prefix === 'pt') {
+      const ptBr = voices.filter(v => {
         const lang = (v.language || '').toLowerCase().replace('_', '-');
         const id = (v.identifier || '').toLowerCase();
         const name = (v.name || '').toLowerCase();
@@ -308,140 +467,87 @@ export class TTSService {
           name.includes('brasil')
         );
       });
-
-      if (ptBrVoices.length === 0) {
-        const generalPt = voices.filter(v => {
-          const lang = (v.language || '').toLowerCase().replace('_', '-');
-          return lang.startsWith('pt') && !lang.includes('pt-pt');
-        });
-        if (generalPt.length > 0) {
-          this.cachedVoiceId = generalPt[0].identifier;
-          return this.cachedVoiceId;
-        }
-        return undefined;
-      }
-
-      // 2. Classificação por naturalidade humana:
-      // Elimina o sintetizador robótico legado ('pt-br-language' / Pico / SMT)
-      // e promove os modelos Neurais WaveNet do Google Speech Services ('afs', 'ptd', 'pte')
-      const ranked = [...ptBrVoices].sort((a, b) => {
-        const score = (v: typeof a) => {
-          const id = (v.identifier || '').toLowerCase();
-          const name = (v.name || '').toLowerCase();
-          const qual = (v.quality || '').toString().toLowerCase();
-
-          let pts = 0;
-          // Penalização severa da voz robótica antiga do Google Tradutor de 2010 e sintetizadores metálicos
-          if (id === 'pt-br-language' || id.endsWith('-language') || id.includes('pt_br_lang')) pts -= 500;
-          if (id.includes('pico') || name.includes('pico') || id.includes('espeak') || id.includes('smt')) pts -= 500;
-
-          // Vozes confirmadas como expressivas e mais humanas no aparelho:
-          if (id.includes('pte') || name.includes('pte')) pts += 350;
-          if (id.includes('yif') || name.includes('yif')) pts += 300;
-          if (id.includes('jab') || name.includes('jab')) pts += 120;
-
-          // Vozes 'afs' e 'ptd' que soam mecânicas / como tradutor antigo no aparelho:
-          if (id.includes('afs') || name.includes('afs')) pts -= 150;
-          if (id.includes('ptd') || name.includes('ptd')) pts -= 150;
-
-          if (qual.includes('enhanced') || qual.includes('high') || qual === 'enhanced') pts += 30;
-          if (id.includes('google') || name.includes('google')) pts += 20;
-          return pts;
-        };
-
-        return score(b) - score(a);
+      if (ptBr.length > 0) return ptBr;
+      return voices.filter(v => {
+        const lang = (v.language || '').toLowerCase().replace('_', '-');
+        return lang.startsWith('pt') && !lang.includes('pt-pt');
       });
-
-      const best = ranked[0];
-      if (best) {
-        this.cachedVoiceId = best.identifier;
-        return this.cachedVoiceId;
-      }
-      return undefined;
-    } catch {
-      return undefined;
     }
+
+    return voices.filter(v => {
+      const lang = (v.language || '').toLowerCase().replace('_', '-');
+      const id = (v.identifier || '').toLowerCase();
+      return lang.startsWith(prefix) || id.startsWith(`${prefix}-`) || id.startsWith(`${prefix}_`);
+    });
   }
 
-  static setUserPreferredVoice(voiceId: string): void {
-    this.cachedVoiceId = voiceId;
+  /**
+   * Identifica a melhor voz offline local para Português do Brasil (pt-BR).
+   */
+  static async getBestLocalVoiceAsync(): Promise<string | undefined> {
+    return this.getBestVoiceForLanguageAsync('pt-BR');
+  }
+
+  static setUserPreferredVoice(voiceId: string, langCode: string = 'pt-BR'): void {
+    const key = this.normalizeLangKey(langCode);
+    this.userPreferredVoiceByLang.set(key, voiceId);
+    this.cachedVoiceByLang.set(key, voiceId);
   }
 
   static async getAvailablePtBrVoices(): Promise<HumanFriendlyVoice[]> {
-    try {
-      let voices = await Speech.getAvailableVoicesAsync();
-      if (!voices || voices.length === 0) {
-        await new Promise(r => setTimeout(r, 400));
-        voices = await Speech.getAvailableVoicesAsync();
-      }
-      if (!voices) return [];
+    return this.getAvailableVoicesForLanguage('pt-BR');
+  }
 
-      const ptBr = voices.filter(v => {
-        const lang = (v.language || '').toLowerCase().replace('_', '-');
-        const id = (v.identifier || '').toLowerCase();
-        return (
-          lang === 'pt-br' ||
-          lang.startsWith('pt-br') ||
-          id.includes('pt-br') ||
-          id.includes('pt_br') ||
-          id.includes('por-bra')
-        );
-      });
+  static async getAvailableVoicesForLanguage(langCode: string = 'pt-BR'): Promise<HumanFriendlyVoice[]> {
+    const normalizedLocale = this.normalizeLangKey(langCode);
+    const voices = await this.fetchVoicesSafe();
+    if (voices.length === 0) return [];
 
-      const friendly = ptBr.map(v =>
-        this.formatFriendlyVoice(v.identifier, v.name, v.quality?.toString())
-      );
+    const filtered = this.filterVoicesByLang(voices, normalizedLocale);
+    const langLabels: Record<string, string> = {
+      'pt-BR': 'Português',
+      'en-US': 'English',
+      'es-ES': 'Español',
+      'fr-FR': 'Français',
+      'sw-KE': 'Kiswahili'
+    };
+    const label = langLabels[normalizedLocale] || normalizedLocale;
 
-      // Ordena colocando modelos neurais/recomendados primeiro
-      return friendly.sort((a, b) => {
-        if (a.isRecommended && !b.isRecommended) return -1;
-        if (!a.isRecommended && b.isRecommended) return 1;
-        return a.displayName.localeCompare(b.displayName);
-      });
-    } catch {
-      return [];
-    }
+    // Prioriza vozes locais (offline) e ordena por qualidade
+    const ranked = [...filtered].sort(
+      (a, b) => this.scoreVoice(b, normalizedLocale) - this.scoreVoice(a, normalizedLocale)
+    );
+
+    return ranked.slice(0, 12).map(v =>
+      this.formatFriendlyVoice(v.identifier, v.name, v.quality?.toString(), label)
+    );
   }
 
   static async getBestVoiceForLanguageAsync(langCode: string = 'pt-BR'): Promise<string | undefined> {
-    const clean = (langCode || 'pt-BR').toLowerCase();
-    const isEn = clean.startsWith('en');
-    const isEs = clean.startsWith('es');
-    const isFr = clean.startsWith('fr');
+    const normalizedLocale = this.normalizeLangKey(langCode);
 
-    if (!isEn && !isEs && !isFr) {
-      return this.getBestLocalVoiceAsync();
+    const userPref = this.userPreferredVoiceByLang.get(normalizedLocale);
+    if (userPref) return userPref;
+
+    const cached = this.cachedVoiceByLang.get(normalizedLocale);
+    if (cached) return cached;
+
+    const voices = await this.fetchVoicesSafe();
+    if (voices.length === 0) return undefined;
+
+    const matching = this.filterVoicesByLang(voices, normalizedLocale);
+    if (matching.length === 0) return undefined;
+
+    const ranked = [...matching].sort(
+      (a, b) => this.scoreVoice(b, normalizedLocale) - this.scoreVoice(a, normalizedLocale)
+    );
+
+    const best = ranked[0];
+    if (best) {
+      this.cachedVoiceByLang.set(normalizedLocale, best.identifier);
+      return best.identifier;
     }
-
-    try {
-      let voices = await Speech.getAvailableVoicesAsync();
-      if (!voices || voices.length === 0) {
-        await new Promise(r => setTimeout(r, 300));
-        voices = await Speech.getAvailableVoicesAsync();
-      }
-      if (!voices || voices.length === 0) return undefined;
-
-      const prefix = isEn ? 'en' : isEs ? 'es' : isFr ? 'fr' : 'pt';
-      const targetVoices = voices.filter(v => {
-        const vLang = (v.language || '').toLowerCase().replace('_', '-');
-        return vLang.startsWith(prefix);
-      });
-
-      if (targetVoices.length === 0) {
-        return undefined;
-      }
-
-      // Procura por vozes aprimoradas / neurais para o idioma
-      const neural = targetVoices.find(v => {
-        const id = (v.identifier || '').toLowerCase();
-        const qual = (v.quality || '').toString().toLowerCase();
-        return qual.includes('enhanced') || id.includes('neural') || id.includes('natural');
-      });
-
-      return neural ? neural.identifier : targetVoices[0].identifier;
-    } catch {
-      return undefined;
-    }
+    return undefined;
   }
 
   static async speak(
@@ -457,56 +563,82 @@ export class TTSService {
   ): Promise<void> {
     if (!text || text.trim().length === 0) return;
 
-    if (this.isSpeakingNow) {
+    const myGeneration = ++this.speakGeneration;
+
+    if (this.isSpeakingNow || this.activeResolve) {
       await this.stop();
+      // Se outra chamada chegou enquanto estávamos parando, aborta esta antiga
+      if (myGeneration !== this.speakGeneration) return;
     }
 
     this.isSpeakingNow = true;
 
-    // 1. Identifica o idioma correto (passado por parâmetro ou detectado do texto)
-    const activeLang = options?.language || this.detectTextLanguage(text);
+    // 1. Identifica o idioma correto (explicitamente passado ou detectado do texto)
+    const rawLang = options?.language || this.detectTextLanguage(text);
+    const activeLang = this.normalizeLangKey(rawLang);
 
-    // 2. Aplica a camada de pré-processamento fonético bíblico no idioma correto
+    // 2. Aplica a camada de pré-processamento fonético Unicode-safe no idioma correto
     const cleanSpokenText = this.normalizeForSpeech(text, activeLang);
+    if (!cleanSpokenText) {
+      this.isSpeakingNow = false;
+      options?.onDone?.();
+      return;
+    }
 
-    // 3. Identifica melhor voz neural para aquele idioma específico
+    // 3. Identifica melhor voz offline para aquele idioma específico
     let preferredVoice = options?.voice;
     if (!preferredVoice) {
       preferredVoice = await this.getBestVoiceForLanguageAsync(activeLang);
     }
 
-    // 4. Cadência natural humana para leitura bíblica (rate 0.94, pitch 1.0)
-    Speech.speak(cleanSpokenText, {
-      language: activeLang,
-      rate: options?.rate ?? 0.94,
-      pitch: options?.pitch ?? 1.0,
-      voice: preferredVoice,
-      onStart: () => {
-        this.isSpeakingNow = true;
-        options?.onStart?.();
-      },
-      onDone: () => {
-        this.isSpeakingNow = false;
+    if (myGeneration !== this.speakGeneration) return;
+
+    // 4. Fala e aguarda conclusão (onDone / onStopped / onError) para permitir leitura contínua sem cortes
+    return new Promise<void>((resolve) => {
+      const finish = () => {
+        if (this.activeResolve === finish) {
+          this.activeResolve = null;
+        }
+        if (myGeneration === this.speakGeneration) {
+          this.isSpeakingNow = false;
+        }
         options?.onDone?.();
-      },
-      onStopped: () => {
-        this.isSpeakingNow = false;
-        options?.onDone?.();
-      },
-      onError: () => {
-        this.isSpeakingNow = false;
-        options?.onDone?.();
+        resolve();
+      };
+
+      this.activeResolve = finish;
+
+      try {
+        Speech.speak(cleanSpokenText, {
+          language: activeLang,
+          rate: options?.rate ?? 0.94,
+          pitch: options?.pitch ?? 1.0,
+          voice: preferredVoice,
+          onStart: () => {
+            if (myGeneration === this.speakGeneration) {
+              this.isSpeakingNow = true;
+            }
+            options?.onStart?.();
+          },
+          onDone: finish,
+          onStopped: finish,
+          onError: finish
+        });
+      } catch {
+        finish();
       }
     });
   }
 
   static async stop(): Promise<void> {
+    this.speakGeneration++;
     try {
       await Speech.stop();
     } catch {
       // Ignorar erros caso Speech não estivesse ativo
     } finally {
       this.isSpeakingNow = false;
+      this.resolveActive();
     }
   }
 

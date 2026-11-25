@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Eye } from 'lucide-react-native';
 import { ColorBlindnessType } from '../../types';
 import { ThemeColors } from '../../theme/tokens';
+import { useLanguage } from '../../i18n';
 
 interface ColorBlindnessSectionProps {
   currentColorBlindness: ColorBlindnessType;
@@ -11,34 +12,36 @@ interface ColorBlindnessSectionProps {
   scaledFontSize: (size: number) => number;
 }
 
-const DALTONISM_OPTIONS: { label: string; type: ColorBlindnessType; desc: string }[] = [
-  { label: 'Desativado (Normal)', type: 'none', desc: 'Esquema de cores padrão do aplicativo.' },
-  { label: 'Protanopia', type: 'protanopia', desc: 'Otimizado para insensibilidade a tons de vermelho.' },
-  { label: 'Deuteranopia', type: 'deuteranopia', desc: 'Otimizado para insensibilidade a tons de verde.' },
-  { label: 'Tritanopia', type: 'tritanopia', desc: 'Otimizado para insensibilidade a tons de azul.' },
-  { label: 'Alto Contraste', type: 'high_contrast', desc: 'Preto puro com bordas nítidas e textos de alto contraste.' }
-];
-
 export function ColorBlindnessSection({
   currentColorBlindness,
   onSelectColorBlindness,
   colors,
   scaledFontSize
 }: ColorBlindnessSectionProps) {
+  const { t } = useLanguage();
+
+  const daltonismOptions: { label: string; type: ColorBlindnessType; desc: string }[] = [
+    { label: t.accessibility.colorBlindnessNone, type: 'none', desc: t.accessibility.colorBlindnessNoneDesc },
+    { label: t.accessibility.protanopia, type: 'protanopia', desc: t.accessibility.protanopiaDesc },
+    { label: t.accessibility.deuteranopia, type: 'deuteranopia', desc: t.accessibility.deuteranopiaDesc },
+    { label: t.accessibility.tritanopia, type: 'tritanopia', desc: t.accessibility.tritanopiaDesc },
+    { label: t.accessibility.highContrast, type: 'high_contrast', desc: t.accessibility.highContrastDesc }
+  ];
+
   return (
     <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.sectionHeader}>
         <Eye size={scaledFontSize(20)} color={colors.secondary} />
         <Text style={[styles.sectionTitle, { color: colors.text, fontSize: scaledFontSize(16) }]}>
-          Paletas para Daltonismo
+          {t.accessibility.colorBlindness}
         </Text>
       </View>
       <Text style={[styles.sectionDesc, { color: colors.textSecondary, fontSize: scaledFontSize(13) }]}>
-        Remapeamento adaptativo de cores para distinguir botões, tags e destaques com clareza.
+        {t.accessibility.colorBlindnessDescription}
       </Text>
 
       <View style={styles.daltonismList}>
-        {DALTONISM_OPTIONS.map((opt) => {
+        {daltonismOptions.map((opt) => {
           const isSelected = currentColorBlindness === opt.type;
           return (
             <TouchableOpacity
@@ -50,7 +53,7 @@ export function ColorBlindnessSection({
               ]}
               onPress={() => onSelectColorBlindness(opt.type)}
               accessibilityRole="button"
-              accessibilityLabel={`Filtro de cor ${opt.label}`}
+              accessibilityLabel={opt.label}
             >
               <View style={styles.daltonismItemHeader}>
                 <Text style={[styles.daltonismLabel, { color: colors.text, fontSize: scaledFontSize(14) }]}>
@@ -59,7 +62,7 @@ export function ColorBlindnessSection({
                 {isSelected ? (
                   <View style={[styles.activeBadge, { backgroundColor: colors.primary }]}>
                     <Text style={[styles.activeBadgeText, { color: colors.primaryText, fontSize: scaledFontSize(11) }]}>
-                      Ativo
+                      {t.common.active}
                     </Text>
                   </View>
                 ) : null}

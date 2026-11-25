@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { BookOpen, User, Calendar, Tag, FileText, Mic, MicOff, Save } from 'lucide-react-native';
 import { ThemeColors } from '../../theme/tokens';
+import { useLanguage } from '../../i18n';
 
 interface WorshipFormFieldsProps {
   isEditing: boolean;
@@ -53,6 +54,8 @@ export function WorshipFormFields({
   colors,
   scaledFontSize
 }: WorshipFormFieldsProps) {
+  const { t } = useLanguage();
+
   return (
     <View style={styles.container}>
       {/* Título / Tema */}
@@ -60,7 +63,7 @@ export function WorshipFormFields({
         <View style={styles.labelRow}>
           <BookOpen size={scaledFontSize(16)} color={colors.primary} />
           <Text style={[styles.label, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-            Tema / Título do Culto *
+            {t.worship.title} *
           </Text>
         </View>
         <TextInput
@@ -68,7 +71,7 @@ export function WorshipFormFields({
             styles.input,
             { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text, fontSize: scaledFontSize(15) }
           ]}
-          placeholder="Ex: O Poder da Oração"
+          placeholder={t.worship.titlePlaceholder}
           placeholderTextColor={colors.textMuted}
           value={title}
           onChangeText={onChangeTitle}
@@ -80,7 +83,7 @@ export function WorshipFormFields({
         <View style={styles.labelRow}>
           <User size={scaledFontSize(16)} color={colors.accent} />
           <Text style={[styles.label, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-            Pastor / Preletor *
+            {t.worship.preacher} *
           </Text>
         </View>
         <TextInput
@@ -88,7 +91,7 @@ export function WorshipFormFields({
             styles.input,
             { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text, fontSize: scaledFontSize(15) }
           ]}
-          placeholder="Ex: Pr. João Silva"
+          placeholder={t.worship.preacherPlaceholder}
           placeholderTextColor={colors.textMuted}
           value={preacher}
           onChangeText={onChangePreacher}
@@ -100,7 +103,7 @@ export function WorshipFormFields({
         <View style={styles.labelRow}>
           <Calendar size={scaledFontSize(16)} color={colors.secondary} />
           <Text style={[styles.label, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-            Data do Culto (AAAA-MM-DD) *
+            {t.worship.date} *
           </Text>
         </View>
         <TextInput
@@ -108,7 +111,7 @@ export function WorshipFormFields({
             styles.input,
             { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text, fontSize: scaledFontSize(15) }
           ]}
-          placeholder="AAAA-MM-DD"
+          placeholder={t.worship.datePlaceholder}
           placeholderTextColor={colors.textMuted}
           value={serviceDate}
           onChangeText={onChangeServiceDate}
@@ -120,7 +123,7 @@ export function WorshipFormFields({
         <View style={styles.labelRow}>
           <Tag size={scaledFontSize(16)} color={colors.highlight} />
           <Text style={[styles.label, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-            Tags / Palavras-chave (separadas por vírgula)
+            {t.worship.tags}
           </Text>
         </View>
         <TextInput
@@ -128,7 +131,7 @@ export function WorshipFormFields({
             styles.input,
             { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text, fontSize: scaledFontSize(15) }
           ]}
-          placeholder="Ex: Fé, Oração, Esperança"
+          placeholder={t.worship.tagsPlaceholder}
           placeholderTextColor={colors.textMuted}
           value={tags}
           onChangeText={onChangeTags}
@@ -140,7 +143,7 @@ export function WorshipFormFields({
         <View style={styles.labelRow}>
           <FileText size={scaledFontSize(16)} color={colors.primary} />
           <Text style={[styles.label, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-            Resumo da Mensagem
+            {t.worship.summary}
           </Text>
         </View>
         <TextInput
@@ -148,7 +151,7 @@ export function WorshipFormFields({
             styles.textArea,
             { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text, fontSize: scaledFontSize(14) }
           ]}
-          placeholder="Breve síntese dos principais ensinamentos ministrados..."
+          placeholder={t.worship.summaryPlaceholder}
           placeholderTextColor={colors.textMuted}
           value={summary}
           onChangeText={onChangeSummary}
@@ -163,7 +166,7 @@ export function WorshipFormFields({
           <View style={styles.labelRow}>
             <FileText size={scaledFontSize(16)} color={colors.secondary} />
             <Text style={[styles.label, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-              Transcrição / Conteúdo Completo
+              {t.worship.fullTranscript}
             </Text>
           </View>
 
@@ -176,7 +179,7 @@ export function WorshipFormFields({
               }
             ]}
             onPress={onToggleDictation}
-            accessibilityLabel={isDictating ? 'Parar ditado por voz' : 'Falar transcrição por voz'}
+            accessibilityLabel={isDictating ? t.worship.listeningStop : t.worship.dictateByVoice}
             accessibilityRole="button"
           >
             {isDictating ? (
@@ -190,7 +193,7 @@ export function WorshipFormFields({
                 { color: isDictating ? '#FFFFFF' : colors.primary, fontSize: scaledFontSize(12) }
               ]}
             >
-              {isDictating ? 'Ouvindo... Parar' : 'Falar por Voz'}
+              {isDictating ? t.worship.listeningStop : t.worship.dictateByVoice}
             </Text>
           </TouchableOpacity>
         </View>
@@ -198,7 +201,7 @@ export function WorshipFormFields({
         {isDictating ? (
           <View style={[styles.dictateBanner, { backgroundColor: colors.danger + '18', borderColor: colors.danger }]}>
             <Text style={[styles.dictateBannerText, { color: colors.danger, fontSize: scaledFontSize(12) }]}>
-              ● Microfone ligado: fale agora que o texto será inserido abaixo automaticamente.
+              ● {t.worship.micActiveBanner}
             </Text>
           </View>
         ) : null}
@@ -208,7 +211,7 @@ export function WorshipFormFields({
             styles.textAreaLarge,
             { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text, fontSize: scaledFontSize(14) }
           ]}
-          placeholder="Texto integral ou anotações detalhadas da palavra (digite ou use o botão 'Falar por Voz')..."
+          placeholder={t.worship.transcriptPlaceholder}
           placeholderTextColor={colors.textMuted}
           value={fullTranscript}
           onChangeText={onChangeFullTranscript}
@@ -222,7 +225,7 @@ export function WorshipFormFields({
         style={[styles.submitButton, { backgroundColor: colors.primary }, saving && styles.submitButtonDisabled]}
         onPress={onSubmit}
         disabled={saving}
-        accessibilityLabel="Salvar registro de culto"
+        accessibilityLabel={t.worship.saveWorship}
         accessibilityRole="button"
       >
         {saving ? (
@@ -231,7 +234,7 @@ export function WorshipFormFields({
           <>
             <Save size={scaledFontSize(18)} color={colors.primaryText} />
             <Text style={[styles.submitButtonText, { color: colors.primaryText, fontSize: scaledFontSize(16) }]}>
-              {isEditing ? 'Salvar Alterações' : 'Cadastrar no SQLite'}
+              {isEditing ? t.worship.saveChanges : t.worship.saveWorship}
             </Text>
           </>
         )}

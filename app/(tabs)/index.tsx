@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,10 +22,13 @@ import {
   BookOpen
 } from 'lucide-react-native';
 import { useAccessibility } from '../../src/context/AccessibilityContext';
+import { useLanguage } from '../../src/i18n';
 import { LanguageSelectorButton } from '../../src/components/LanguageSelectorButton';
 import { WorshipRepository } from '../../src/database/repositories/WorshipRepository';
 import { WorshipService, PaginatedResult } from '../../src/types';
 import { PaginationControls } from '../../src/components/PaginationControls';
+import { useTranslatedWorships } from '../../src/services/translation/WorshipContentTranslator';
+import { TTSService } from '../../src/services/audio/TTSService';
 
 const PAGE_SIZE = 4; // Exibe de 4 em 4 para navegação fluida e clara entre páginas
 
@@ -33,6 +36,7 @@ export default function CultosCrudScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors, scaledFontSize, speakText } = useAccessibility();
+  const { t, language, languageInfo } = useLanguage();
 
   const [paginatedData, setPaginatedData] = useState<PaginatedResult<WorshipService> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,17 +53,24 @@ export default function CultosCrudScreen() {
       });
       setPaginatedData(result);
     } catch (err: any) {
-      Alert.alert('Erro', 'Não foi possível carregar os registros: ' + err.message);
+      Alert.alert(t.common.error, err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t.common.error]);
 
   useFocusEffect(
     useCallback(() => {
       loadData(currentPage, searchQuery);
     }, [currentPage, searchQuery, loadData])
   );
+
+  // Para qualquer leitura TTS anterior se o usuário trocar o idioma no topo
+  useEffect(() => {
+    TTSService.stop().catch(() => {});
+  }, [language]);
+
+  const { items: localizedWorships } = useTranslatedWorships(paginatedData?.data || [], language);
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
@@ -68,20 +79,19 @@ export default function CultosCrudScreen() {
 
   const handleDelete = (item: WorshipService) => {
     Alert.alert(
-      'Confirmar Exclusão',
-      `Deseja realmente remover o registro "${item.title}"?`,
+      t.worship.confirmDeleteTitle,
+      t.worship.confirmDeleteMessage.replace('{title}', item.title),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Excluir',
+          text: t.common.delete,
           style: 'destructive',
           onPress: async () => {
             try {
               await WorshipRepository.delete(item.id);
-              // Recarrega registros
               loadData(currentPage, searchQuery);
             } catch (err: any) {
-              Alert.alert('Erro', 'Falha ao remover o registro: ' + err.message);
+              Alert.alert(t.common.error, err.message);
             }
           }
         }
@@ -100,6 +110,11 @@ export default function CultosCrudScreen() {
     router.push('/worship/form');
   };
 
+  const handleSpeakWorship = (item: WorshipService) => {
+    const speechText = `${item.title}. ${t.worship.preacher}: ${item.preacher}. ${item.summary || item.full_transcript}`;
+    speakText(speechText, { language: languageInfo.speechLocale });
+  };
+
   const renderWorshipCard = ({ item }: { item: WorshipService }) => (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.cardHeader}>
@@ -112,8 +127,8 @@ export default function CultosCrudScreen() {
         <View style={styles.actionsRow}>
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: colors.surfaceElevated }]}
-            onPress={() => speakText(`${item.title}. Pregador: ${item.preacher}. ${item.summary || item.full_transcript}`)}
-            accessibilityLabel="Ouvir resumo do culto"
+            onPress={() => handleSpeakWorship(item)}
+            accessibilityLabel={t.worship.listenSummary}
             accessibilityRole="button"
           >
             <Volume2 size={scaledFontSize(16)} color={colors.secondary} />
@@ -121,7 +136,7 @@ export default function CultosCrudScreen() {
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: colors.surfaceElevated }]}
             onPress={() => handleEdit(item)}
-            accessibilityLabel="Editar culto"
+            accessibilityLabel={t.worship.editWorship}
             accessibilityRole="button"
           >
             <Edit size={scaledFontSize(16)} color={colors.primary} />
@@ -129,7 +144,7 @@ export default function CultosCrudScreen() {
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: colors.surfaceElevated }]}
             onPress={() => handleDelete(item)}
-            accessibilityLabel="Excluir culto"
+            accessibilityLabel={t.worship.deleteWorship}
             accessibilityRole="button"
           >
             <Trash2 size={scaledFontSize(16)} color={colors.danger} />
@@ -181,24 +196,24 @@ export default function CultosCrudScreen() {
         <View style={{ flex: 1, marginRight: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={[styles.screenTitle, { color: colors.text, fontSize: scaledFontSize(22) }]}>
-              Cultos & Mensagens
+              {t.tabs.worships}
             </Text>
             <LanguageSelectorButton />
           </View>
           <Text style={[styles.screenSubtitle, { color: colors.textSecondary, fontSize: scaledFontSize(13) }]}>
-            Sistema de Gerenciamento SQLite (CRUD Completo)
+            {t.tabs.worshipsSubtitle}
           </Text>
         </View>
 
         <TouchableOpacity
           style={[styles.addButton, { backgroundColor: colors.primary }]}
           onPress={handleCreateNew}
-          accessibilityLabel="Cadastrar novo culto"
+          accessibilityLabel={t.worship.addWorship}
           accessibilityRole="button"
         >
           <Plus size={scaledFontSize(18)} color={colors.primaryText} />
           <Text style={[styles.addButtonText, { color: colors.primaryText, fontSize: scaledFontSize(14) }]}>
-            Novo
+            {t.common.newButton}
           </Text>
         </TouchableOpacity>
       </View>
@@ -208,7 +223,7 @@ export default function CultosCrudScreen() {
         <Search size={scaledFontSize(18)} color={colors.textMuted} />
         <TextInput
           style={[styles.searchInput, { color: colors.text, fontSize: scaledFontSize(14) }]}
-          placeholder="Buscar por tema, pregador ou tag..."
+          placeholder={t.worship.searchPlaceholder}
           placeholderTextColor={colors.textMuted}
           value={searchQuery}
           onChangeText={handleSearch}
@@ -220,12 +235,12 @@ export default function CultosCrudScreen() {
         <View style={styles.centerLoading}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingLabel, { color: colors.textMuted, fontSize: scaledFontSize(14) }]}>
-            Consultando registros no SQLite...
+            {t.worship.loadingRecords}
           </Text>
         </View>
       ) : (
         <FlatList
-          data={paginatedData?.data || []}
+          data={localizedWorships}
           keyExtractor={item => item.id.toString()}
           renderItem={renderWorshipCard}
           contentContainerStyle={styles.listContent}
@@ -244,10 +259,10 @@ export default function CultosCrudScreen() {
             <View style={styles.emptyContainer}>
               <BookOpen size={scaledFontSize(40)} color={colors.textMuted} />
               <Text style={[styles.emptyTitle, { color: colors.textSecondary, fontSize: scaledFontSize(16) }]}>
-                Nenhum culto encontrado
+                {t.worship.noWorships}
               </Text>
               <Text style={[styles.emptySubtitle, { color: colors.textMuted, fontSize: scaledFontSize(13) }]}>
-                Toque no botão "Novo" para cadastrar seu primeiro registro.
+                {t.worship.emptySubtitle}
               </Text>
             </View>
           }
@@ -279,9 +294,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     borderRadius: 14,
-    gap: 6
+    gap: 4
   },
   addButtonText: {
     fontWeight: '700'
@@ -290,35 +305,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
-    marginBottom: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    marginBottom: 12,
+    paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: 1,
-    gap: 10
+    gap: 8
   },
   searchInput: {
     flex: 1,
-    padding: 0
+    paddingVertical: 10
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingBottom: 20
-  },
-  centerLoading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingBottom: 24,
     gap: 12
-  },
-  loadingLabel: {
-    fontWeight: '500'
   },
   card: {
     borderRadius: 18,
     borderWidth: 1,
     padding: 16,
-    marginBottom: 12,
     gap: 8
   },
   cardHeader: {
@@ -336,7 +341,6 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 8
   },
   iconButton: {
@@ -344,7 +348,8 @@ const styles = StyleSheet.create({
     borderRadius: 10
   },
   title: {
-    fontWeight: '700'
+    fontWeight: '700',
+    lineHeight: 22
   },
   preacherRow: {
     flexDirection: 'row',
@@ -355,7 +360,7 @@ const styles = StyleSheet.create({
     fontWeight: '500'
   },
   summaryText: {
-    lineHeight: 18
+    lineHeight: 19
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -364,18 +369,27 @@ const styles = StyleSheet.create({
     marginTop: 4
   },
   tagBadge: {
-    paddingVertical: 3,
     paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 8,
     borderWidth: 1
   },
   tagText: {
+    fontWeight: '600'
+  },
+  centerLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12
+  },
+  loadingLabel: {
     fontWeight: '500'
   },
   emptyContainer: {
-    paddingVertical: 48,
+    padding: 40,
     alignItems: 'center',
-    gap: 8
+    gap: 10
   },
   emptyTitle: {
     fontWeight: '700'
@@ -384,4 +398,3 @@ const styles = StyleSheet.create({
     textAlign: 'center'
   }
 });
-

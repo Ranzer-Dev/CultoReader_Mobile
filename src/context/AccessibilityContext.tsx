@@ -12,7 +12,17 @@ interface AccessibilityContextData {
   toggleHaptic: () => void;
   toggleLibras: () => void;
   toggleSpeakForMe: () => void;
-  speakText: (text: string, options?: { language?: string; voice?: string; rate?: number; pitch?: number }) => Promise<void>;
+  speakText: (
+    text: string,
+    options?: {
+      language?: string;
+      voice?: string;
+      rate?: number;
+      pitch?: number;
+      onStart?: () => void;
+      onDone?: () => void;
+    }
+  ) => Promise<void>;
   stopSpeaking: () => Promise<void>;
 }
 
@@ -55,7 +65,17 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
     setSettings(prev => ({ ...prev, speakForMeEnabled: !prev.speakForMeEnabled }));
   };
 
-  const speakText = async (text: string, options?: { language?: string; voice?: string; rate?: number; pitch?: number }) => {
+  const speakText = async (
+    text: string,
+    options?: {
+      language?: string;
+      voice?: string;
+      rate?: number;
+      pitch?: number;
+      onStart?: () => void;
+      onDone?: () => void;
+    }
+  ) => {
     await TTSService.speak(text, options);
   };
 

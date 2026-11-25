@@ -11,6 +11,7 @@ import {
 } from 'lucide-react-native';
 import { HumanFriendlyVoice } from '../../services/audio/TTSService';
 import { ThemeColors } from '../../theme/tokens';
+import { useLanguage } from '../../i18n';
 
 interface VoiceSynthesisSectionProps {
   availableVoices: HumanFriendlyVoice[];
@@ -37,16 +38,18 @@ export function VoiceSynthesisSection({
   colors,
   scaledFontSize
 }: VoiceSynthesisSectionProps) {
+  const { t } = useLanguage();
+
   return (
     <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.sectionHeader}>
         <Volume2 size={scaledFontSize(20)} color={colors.accent} />
         <Text style={[styles.sectionTitle, { color: colors.text, fontSize: scaledFontSize(16) }]}>
-          Voz de Leitura (Sintetizador TTS)
+          {t.accessibility.ttsSettings}
         </Text>
       </View>
       <Text style={[styles.sectionDesc, { color: colors.textSecondary, fontSize: scaledFontSize(13) }]}>
-        Ouça as passagens bíblicas e transcrições com dicção clara e ritmo fluido.
+        {t.accessibility.ttsDescription}
       </Text>
 
       {/* Cartão de Ação: Como Deixar a Voz Mais Humana com 1 Clique */}
@@ -54,55 +57,55 @@ export function VoiceSynthesisSection({
         <View style={styles.humanVoiceHeader}>
           <Sparkles size={scaledFontSize(18)} color={colors.accent} />
           <Text style={[styles.humanVoiceTitle, { color: colors.accent, fontSize: scaledFontSize(14) }]}>
-            Como ativar a voz quase humana (Sem custo)
+            {t.accessibility.ttsHumanGuideTitle}
           </Text>
         </View>
 
         <Text style={[styles.humanVoiceText, { color: colors.text, fontSize: scaledFontSize(12.5) }]}>
-          Por padrão, muitos celulares vêm com vozes mecânicas. Toque no botão abaixo para abrir direto os ajustes do Android, escolha "Serviços de Voz do Google" e baixe a Voz 2 ou Voz 4 (modelos neurais de alta qualidade):
+          {t.accessibility.ttsHumanGuideText}
         </Text>
 
         <View style={styles.actionButtonsWrap}>
           <TouchableOpacity
             style={[styles.primaryActionBtn, { backgroundColor: colors.accent }]}
             onPress={onOpenTtsSettings}
-            accessibilityLabel="Abrir configurações de voz do Android para ativar modelo humano"
+            accessibilityLabel={t.accessibility.ttsOpenSettings}
             accessibilityRole="button"
           >
             <Sliders size={scaledFontSize(16)} color="#FFFFFF" />
             <Text style={[styles.primaryActionBtnText, { color: '#FFFFFF', fontSize: scaledFontSize(13) }]}>
-              Abrir Configurações de Voz do Android
+              {t.accessibility.ttsOpenSettings}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.secondaryActionBtn, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
             onPress={onOpenGoogleTtsStore}
-            accessibilityLabel="Atualizar aplicativo de vozes do Google na Play Store"
+            accessibilityLabel={t.accessibility.ttsOpenPlayStore}
             accessibilityRole="button"
           >
             <ExternalLink size={scaledFontSize(15)} color={colors.primary} />
             <Text style={[styles.secondaryActionBtnText, { color: colors.primary, fontSize: scaledFontSize(12.5) }]}>
-              Instalar / Atualizar Vozes do Google (Play Store)
+              {t.accessibility.ttsOpenPlayStore}
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Lista de Vozes Detectadas com Nomes Amigáveis para Humanos */}
+      {/* Lista de Vozes Detectadas */}
       <View style={{ marginTop: 14 }}>
         <View style={styles.voiceSectionHeaderRow}>
           <Text style={[styles.subSectionTitle, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-            Vozes Disponíveis no seu Celular:
+            {t.accessibility.ttsAvailableVoices}
           </Text>
           <TouchableOpacity
             style={[styles.reloadVoicesBtn, { backgroundColor: colors.surfaceElevated }]}
             onPress={onReloadVoices}
-            accessibilityLabel="Recarregar vozes instaladas"
+            accessibilityLabel={t.common.refresh}
           >
             <RefreshCw size={scaledFontSize(13)} color={colors.textSecondary} />
             <Text style={[styles.reloadVoicesText, { color: colors.textSecondary, fontSize: scaledFontSize(11) }]}>
-              Atualizar
+              {t.common.refresh}
             </Text>
           </TouchableOpacity>
         </View>
@@ -147,7 +150,7 @@ export function VoiceSynthesisSection({
                         isSelected ? null : { borderColor: colors.border, borderWidth: 1 }
                       ]}
                       onPress={() => onSelectVoice(v.identifier)}
-                      accessibilityLabel={`Selecionar ${v.displayName}`}
+                      accessibilityLabel={`${t.accessibility.ttsSelectVoiceBtn} ${v.displayName}`}
                     >
                       {isSelected ? (
                         <CheckCircle2 size={scaledFontSize(14)} color="#FFFFFF" />
@@ -158,18 +161,18 @@ export function VoiceSynthesisSection({
                           { color: isSelected ? '#FFFFFF' : colors.text, fontSize: scaledFontSize(12) }
                         ]}
                       >
-                        {isSelected ? 'Voz Ativa' : 'Selecionar'}
+                        {isSelected ? t.accessibility.ttsActiveVoice : t.accessibility.ttsSelectVoiceBtn}
                       </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={[styles.voiceTestBtn, { backgroundColor: isPlaying ? colors.success : colors.primary }]}
                       onPress={() => onTestVoice(v.identifier)}
-                      accessibilityLabel={`Ouvir teste de ${v.displayName}`}
+                      accessibilityLabel={`${t.accessibility.testVoice} ${v.displayName}`}
                     >
                       <Play size={scaledFontSize(12)} color="#FFFFFF" />
                       <Text style={[styles.voiceTestBtnText, { color: '#FFFFFF', fontSize: scaledFontSize(11.5) }]}>
-                        {isPlaying ? 'Tocando...' : 'Ouvir Teste'}
+                        {isPlaying ? t.accessibility.ttsPlaying : t.accessibility.testVoice}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -180,7 +183,7 @@ export function VoiceSynthesisSection({
         ) : (
           <View style={[styles.noVoicesBox, { backgroundColor: colors.surfaceElevated }]}>
             <Text style={[styles.noVoicesText, { color: colors.textMuted, fontSize: scaledFontSize(13) }]}>
-              Nenhuma voz foi carregada ainda. Toque em "Atualizar" ou configure o motor de voz do Google.
+              {t.accessibility.ttsNoVoices}
             </Text>
           </View>
         )}

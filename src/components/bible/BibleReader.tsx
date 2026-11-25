@@ -35,6 +35,7 @@ import { useLanguage } from '../../i18n';
 import { BibleManager } from '../../services/bible/BibleManager';
 import { CanonicalBookInfo, CANONICAL_BOOKS } from '../../services/bible/BibleBooksData';
 import { BibleNotesRepository } from '../../database/repositories/BibleNotesRepository';
+import { TranslationService } from '../../services/translation/TranslationService';
 import { BibleHighlight, BibleNote } from '../../types';
 
 interface BibleReaderProps {
@@ -59,7 +60,9 @@ export const BibleReader: React.FC<BibleReaderProps> = ({
   const { colors, scaledFontSize, speakText, stopSpeaking } = useAccessibility();
   const { t, language } = useLanguage();
 
-  const [version, setVersion] = useState<string>('NVI');
+  const [version, setVersion] = useState<string>(() => BibleManager.getVersionForLanguage(language));
+  const [needsTranslatorDownload, setNeedsTranslatorDownload] = useState<boolean>(false);
+  const [downloadingTranslator, setDownloadingTranslator] = useState<boolean>(false);
   const [selectedBook, setSelectedBook] = useState<CanonicalBookInfo>(() => {
     if (initialBook) {
       const found = BibleManager.findBookInfo(initialBook);
@@ -97,13 +100,31 @@ export const BibleReader: React.FC<BibleReaderProps> = ({
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [currentSpokenVerse, setCurrentSpokenVerse] = useState<number | null>(null);
   const [audioSpeed, setAudioSpeed] = useState<number>(1.0);
+  const audioSpeedRef = useRef<number>(1.0);
+  audioSpeedRef.current = audioSpeed;
   const audioStopRequestedRef = useRef<boolean>(false);
+  const pendingAutoPlayNextRef = useRef<boolean>(false);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Sincroniza a versão da Bíblia automaticamente sempre que o idioma do sistema mudar no topo
+  useEffect(() => {
+    const mappedVersion = BibleManager.getVersionForLanguage(language);
+    setVersion(mappedVersion);
+  }, [language]);
 
   // Carregar Versículos, Grifos e Anotações do Capítulo Atual
   const loadChapter = useCallback(async (vCode: string, book: CanonicalBookInfo, chap: number) => {
     setLoading(true);
     try {
+      const meta = BibleManager.getVersionMeta(vCode);
+      const vLang = (meta.language || 'pt').toString().toLowerCase();
+      if (!meta.isBundled && vLang !== 'pt' && vLang !== 'ts') {
+        const downloaded = await TranslationService.isPairDownloaded('pt', vLang);
+        setNeedsTranslatorDownload(!downloaded);
+      } else {
+        setNeedsTranslatorDownload(false);
+      }
+
       const [resultVerses, dbHighlights, dbNotes] = await Promise.all([
         BibleManager.getChapterVerses(vCode, book.names.pt, chap),
         BibleNotesRepository.getHighlights(vCode, book.names.pt, chap),
@@ -130,9 +151,31 @@ export const BibleReader: React.FC<BibleReaderProps> = ({
     }
   }, []);
 
+  const handleDownloadVersionTranslator = async () => {
+    const meta = BibleManager.getVersionMeta(version);
+    const vLang = (meta.language || 'pt').toString().toLowerCase();
+    if (vLang === 'pt' || vLang === 'ts') return;
+    setDownloadingTranslator(true);
+    try {
+      const ok = await TranslationService.downloadPair('pt', vLang);
+      if (ok) {
+        BibleManager.clearTranslatedChapterCache();
+        setNeedsTranslatorDownload(false);
+        await loadChapter(version, selectedBook, selectedChapter);
+      }
+    } catch (err: any) {
+      Alert.alert(t.common.error, err?.message || t.bible.offlineTranslatorBanner);
+    } finally {
+      setDownloadingTranslator(false);
+    }
+  };
+
   useEffect(() => {
+    const isAutoAdvancing = pendingAutoPlayNextRef.current;
+    if (!isAutoAdvancing) {
+      stopAudio();
+    }
     loadChapter(version, selectedBook, selectedChapter);
-    stopAudio();
   }, [version, selectedBook, selectedChapter, loadChapter]);
 
   // Navegação de Capítulos
@@ -164,47 +207,64 @@ export const BibleReader: React.FC<BibleReaderProps> = ({
   // Áudio TTS Versículo a Versículo com Destaque e Leitura Contínua
   const stopAudio = async () => {
     audioStopRequestedRef.current = true;
+    pendingAutoPlayNextRef.current = false;
     setIsPlayingAudio(false);
     setCurrentSpokenVerse(null);
     await stopSpeaking();
   };
 
-  const startAudioReading = async (startFromVerse: number = 1) => {
-    if (verses.length === 0) return;
+  const startAudioReading = useCallback(async (startFromVerse: number = 1, customVerses?: string[]) => {
+    const activeVerses = customVerses || verses;
+    if (activeVerses.length === 0) return;
+
     audioStopRequestedRef.current = false;
+    pendingAutoPlayNextRef.current = false;
     setIsPlayingAudio(true);
 
-    for (let i = startFromVerse - 1; i < verses.length; i++) {
+    const speechLang = BibleManager.getSpeechLocaleForVersion(version, language);
+    const currentBookLabel = BibleManager.getBookDisplayName(selectedBook, language);
+
+    // Anuncia livro e capítulo no idioma ativo quando começar do versículo 1
+    if (startFromVerse === 1 && !audioStopRequestedRef.current) {
+      await speakText(`${currentBookLabel}, ${t.bible.chapter} ${selectedChapter}.`, {
+        rate: audioSpeedRef.current,
+        language: speechLang
+      });
+    }
+
+    for (let i = startFromVerse - 1; i < activeVerses.length; i++) {
       if (audioStopRequestedRef.current) break;
       const verseNum = i + 1;
-      const verseText = verses[i];
+      const verseText = activeVerses[i];
       setCurrentSpokenVerse(verseNum);
 
       const phraseToSpeak = `${verseNum}. ${verseText}`;
-      const versionMeta = BibleManager.getVersionMeta(version);
-      const vLang = versionMeta?.language || 'pt';
-      const speechLang = vLang === 'en' ? 'en-US' : vLang === 'es' ? 'es-ES' : vLang === 'fr' ? 'fr-FR' : 'pt-BR';
-      await speakText(phraseToSpeak, { rate: audioSpeed, language: speechLang });
+      await speakText(phraseToSpeak, { rate: audioSpeedRef.current, language: speechLang });
 
+      if (audioStopRequestedRef.current) break;
       // Pausa natural entre versículos
-      await new Promise(resolve => setTimeout(resolve, 350));
+      await new Promise(resolve => setTimeout(resolve, 250));
     }
 
     if (!audioStopRequestedRef.current) {
       // Se terminou o capítulo, avança automaticamente para o próximo capítulo ("ouvir a Bíblia inteira")
       if (selectedChapter < selectedBook.chaptersCount) {
+        pendingAutoPlayNextRef.current = true;
         setSelectedChapter(prev => prev + 1);
-        setTimeout(() => {
-          if (!audioStopRequestedRef.current) {
-            startAudioReading(1);
-          }
-        }, 1000);
       } else {
         setIsPlayingAudio(false);
         setCurrentSpokenVerse(null);
       }
     }
-  };
+  }, [verses, version, language, selectedBook, selectedChapter, t.bible.chapter, speakText]);
+
+  // Continua leitura automática quando o próximo capítulo termina de carregar
+  useEffect(() => {
+    if (!loading && pendingAutoPlayNextRef.current && verses.length > 0 && !audioStopRequestedRef.current) {
+      pendingAutoPlayNextRef.current = false;
+      startAudioReading(1, verses);
+    }
+  }, [loading, verses, startAudioReading]);
 
   // Manipulação de Grifo
   const handleApplyHighlight = async (colorHex: string) => {
@@ -401,6 +461,41 @@ export const BibleReader: React.FC<BibleReaderProps> = ({
               <Text style={styles.audioStopText}>{t.common.close}</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      )}
+
+      {/* Aviso de pacote offline para versões traduzidas sob demanda (ex: Francês / Suaíli) */}
+      {needsTranslatorDownload && (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 14,
+            paddingVertical: 8,
+            backgroundColor: colors.accent + '18',
+            borderBottomWidth: 1,
+            borderBottomColor: colors.accent + '40',
+            gap: 8
+          }}
+        >
+          <Text style={{ flex: 1, color: colors.text, fontSize: scaledFontSize(12) }}>
+            {t.bible.offlineTranslatorBanner}
+          </Text>
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.accent,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 8
+            }}
+            onPress={handleDownloadVersionTranslator}
+            disabled={downloadingTranslator}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: scaledFontSize(11), fontWeight: '700' }}>
+              {downloadingTranslator ? t.bible.downloading : t.bible.downloadOfflineTranslator}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -622,7 +717,7 @@ export const BibleReader: React.FC<BibleReaderProps> = ({
               >
                 <Share2 size={scaledFontSize(18)} color={colors.secondary} />
                 <Text style={[styles.actionOptionBtnText, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-                  Compartilhar Versículo
+                  {t.bible.shareVerse}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -751,7 +846,7 @@ export const BibleReader: React.FC<BibleReaderProps> = ({
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <View style={[styles.colorDot, { backgroundColor: h.color_hex }]} />
                         <Text style={[styles.userNoteLoc, { color: colors.text, fontSize: scaledFontSize(13) }]}>
-                          {h.book} {h.chapter}:{h.verse} (Versículo Grifado)
+                          {h.book} {h.chapter}:{h.verse} ({t.bible.highlightedVerseTag})
                         </Text>
                       </View>
                     </TouchableOpacity>

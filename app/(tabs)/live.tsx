@@ -30,7 +30,7 @@ export default function LiveTranscriptionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors, scaledFontSize, speakText } = useAccessibility();
-  const { t, languageInfo, languages } = useLanguage();
+  const { t, language, languageInfo, languages } = useLanguage();
 
   // Estados locais da tela
   const [inputText, setInputText] = useState('');
@@ -74,6 +74,17 @@ export default function LiveTranscriptionScreen() {
     onIncrementalTranslationUpdate: translation.handleIncrementalTranslation,
     onVersesDetected: handleVersesDetected
   });
+
+  // Sincroniza o idioma de tradução da Tela Ao Vivo somente quando o usuário troca o idioma global no topo
+  const originalTranscriptRef = React.useRef(session.originalTranscript);
+  originalTranscriptRef.current = session.originalTranscript;
+  const lastSystemLangRef = React.useRef(language);
+  useEffect(() => {
+    if (lastSystemLangRef.current !== language) {
+      lastSystemLangRef.current = language;
+      translation.switchTargetLanguage(language, originalTranscriptRef.current);
+    }
+  }, [language, translation.switchTargetLanguage]);
 
   // Texto ativo exibido (traduzido ou original com fallback à prova de tela vazia e proteção contra truncamento)
   const activeDisplayText = useMemo(() => {

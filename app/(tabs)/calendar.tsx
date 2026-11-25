@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,25 +8,26 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
-  BookOpen,
   Volume2,
-  Clock,
   User
 } from 'lucide-react-native';
 import { useAccessibility } from '../../src/context/AccessibilityContext';
+import { useLanguage } from '../../src/i18n';
 import { WorshipRepository } from '../../src/database/repositories/WorshipRepository';
 import { WorshipService } from '../../src/types';
 import { LanguageSelectorButton } from '../../src/components/LanguageSelectorButton';
+import { useTranslatedWorships } from '../../src/services/translation/WorshipContentTranslator';
+import { TTSService } from '../../src/services/audio/TTSService';
 
 export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const { colors, scaledFontSize, speakText } = useAccessibility();
+  const { t, language, languageInfo } = useLanguage();
 
   const [currentMonthDate, setCurrentMonthDate] = useState(new Date('2026-11-01'));
   const [markedDates, setMarkedDates] = useState<Record<string, number>>({});
@@ -44,7 +45,6 @@ export default function CalendarScreen() {
       });
       setMarkedDates(map);
 
-      // Carrega cultos do dia selecionado
       if (selectedDate) {
         const result = await WorshipRepository.findPaginated({
           page: 1,
@@ -64,6 +64,12 @@ export default function CalendarScreen() {
     }, [loadCalendarData])
   );
 
+  useEffect(() => {
+    TTSService.stop().catch(() => {});
+  }, [language]);
+
+  const { items: localizedCultosOfDay } = useTranslatedWorships(cultosOfDay, language);
+
   const handleSelectDay = async (dateStr: string) => {
     setSelectedDate(dateStr);
     const result = await WorshipRepository.findPaginated({
@@ -82,7 +88,6 @@ export default function CalendarScreen() {
     setCurrentMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
-  // Montar grade de dias do mês atual
   const year = currentMonthDate.getFullYear();
   const month = currentMonthDate.getMonth();
   const firstDayIndex = new Date(year, month, 1).getDay();
@@ -96,8 +101,13 @@ export default function CalendarScreen() {
     daysGrid.push(d);
   }
 
-  const monthName = currentMonthDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  let monthName = '';
+  try {
+    monthName = currentMonthDate.toLocaleDateString(t.calendar.dateLocale, { month: 'long', year: 'numeric' });
+  } catch {
+    monthName = currentMonthDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  }
+  const weekDays = t.calendar.weekDays;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -105,10 +115,10 @@ export default function CalendarScreen() {
       <View style={[styles.header, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
         <View style={{ flex: 1, marginRight: 8 }}>
           <Text style={[styles.screenTitle, { color: colors.text, fontSize: scaledFontSize(22) }]}>
-            Calendário de Cultos
+            {t.calendar.title}
           </Text>
           <Text style={[styles.screenSubtitle, { color: colors.textSecondary, fontSize: scaledFontSize(13) }]}>
-            Navegue pelas ministrações por data
+            {t.calendar.subtitle}
           </Text>
         </View>
         <LanguageSelectorButton />
@@ -120,7 +130,7 @@ export default function CalendarScreen() {
           <TouchableOpacity
             style={[styles.navMonthBtn, { backgroundColor: colors.surfaceElevated }]}
             onPress={handlePrevMonth}
-            accessibilityLabel="Mês anterior"
+            accessibilityLabel={t.common.previous}
             accessibilityRole="button"
           >
             <ChevronLeft size={scaledFontSize(18)} color={colors.text} />
@@ -133,7 +143,7 @@ export default function CalendarScreen() {
           <TouchableOpacity
             style={[styles.navMonthBtn, { backgroundColor: colors.surfaceElevated }]}
             onPress={handleNextMonth}
-            accessibilityLabel="Próximo mês"
+            accessibilityLabel={t.common.next}
             accessibilityRole="button"
           >
             <ChevronRight size={scaledFontSize(18)} color={colors.text} />
@@ -142,9 +152,9 @@ export default function CalendarScreen() {
 
         {/* Grade de Dias da Semana */}
         <View style={styles.weekRow}>
-          {weekDays.map(w => (
+          {weekDays.map((w, idx) => (
             <Text
-              key={w}
+              key={`${w}-${idx}`}
               style={[styles.weekDayText, { color: colors.textMuted, fontSize: scaledFontSize(12) }]}
             >
               {w}
@@ -207,14 +217,16 @@ export default function CalendarScreen() {
           <View style={styles.selectedDateHeader}>
             <CalendarIcon size={scaledFontSize(16)} color={colors.accent} />
             <Text style={[styles.selectedDateTitle, { color: colors.text, fontSize: scaledFontSize(16) }]}>
-              Cultos em {selectedDate} ({cultosOfDay.length})
+              {t.calendar.servicesOnDate
+                .replace('{date}', selectedDate)
+                .replace('{count}', String(localizedCultosOfDay.length))}
             </Text>
           </View>
 
           {loading ? (
             <ActivityIndicator size="small" color={colors.primary} />
-          ) : cultosOfDay.length > 0 ? (
-            cultosOfDay.map(c => (
+          ) : localizedCultosOfDay.length > 0 ? (
+            localizedCultosOfDay.map(c => (
               <View
                 key={c.id}
                 style={[styles.cultoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -225,8 +237,14 @@ export default function CalendarScreen() {
                   </Text>
                   <TouchableOpacity
                     style={[styles.audioBtn, { backgroundColor: colors.surfaceElevated }]}
-                    onPress={() => speakText(`${c.title}. Pregador: ${c.preacher}. ${c.summary || c.full_transcript}`)}
-                    accessibilityLabel="Ouvir resumo"
+                    onPress={() => {
+                      const preacherLabel = t.worship.preacher.split('/')[0].trim();
+                      speakText(
+                        `${c.title}. ${preacherLabel}: ${c.preacher}. ${c.summary || c.full_transcript}`,
+                        { language: languageInfo.speechLocale }
+                      );
+                    }}
+                    accessibilityLabel={t.worship.listenSummary}
                     accessibilityRole="button"
                   >
                     <Volume2 size={scaledFontSize(16)} color={colors.secondary} />
@@ -250,7 +268,7 @@ export default function CalendarScreen() {
           ) : (
             <View style={[styles.emptyDayBox, { backgroundColor: colors.surfaceElevated }]}>
               <Text style={[styles.emptyDayText, { color: colors.textMuted, fontSize: scaledFontSize(13) }]}>
-                Nenhum culto registrado nesta data. Selecione um dia destacado com marcador.
+                {t.calendar.noServicesOnDate}
               </Text>
             </View>
           )}
@@ -298,42 +316,41 @@ const styles = StyleSheet.create({
   weekRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingVertical: 6
+    paddingVertical: 4
   },
   weekDayText: {
-    fontWeight: '600',
-    width: '14%',
-    textAlign: 'center'
+    width: '14.2%',
+    textAlign: 'center',
+    fontWeight: '700'
   },
   daysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6
-  },
-  dayCell: {
-    width: '12.8%',
-    aspectRatio: 1,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1
+    gap: 6,
+    justifyContent: 'flex-start'
   },
   dayCellEmpty: {
-    width: '12.8%',
+    width: '12.6%',
     aspectRatio: 1
   },
-  dayText: {
-    fontWeight: '600'
+  dayCell: {
+    width: '12.6%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 2
   },
+  dayText: {},
   dot: {
     width: 5,
     height: 5,
-    borderRadius: 2.5,
-    marginTop: 2
+    borderRadius: 3
   },
   selectedDateSection: {
-    marginTop: 8,
-    gap: 12
+    gap: 10,
+    marginTop: 6
   },
   selectedDateHeader: {
     flexDirection: 'row',
@@ -347,21 +364,21 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 8
+    gap: 6
   },
   cultoCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start'
+    alignItems: 'center',
+    gap: 8
   },
   cultoTitle: {
     fontWeight: '700',
     flex: 1
   },
   audioBtn: {
-    padding: 6,
-    borderRadius: 8,
-    marginLeft: 8
+    padding: 8,
+    borderRadius: 10
   },
   cultoMeta: {
     flexDirection: 'row',
@@ -372,15 +389,15 @@ const styles = StyleSheet.create({
     fontWeight: '500'
   },
   cultoSummary: {
-    lineHeight: 18
+    lineHeight: 19
   },
   emptyDayBox: {
-    padding: 16,
-    borderRadius: 12,
+    padding: 20,
+    borderRadius: 14,
     alignItems: 'center'
   },
   emptyDayText: {
-    textAlign: 'center'
+    textAlign: 'center',
+    lineHeight: 18
   }
 });
-

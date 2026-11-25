@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { useAccessibility } from '../../src/context/AccessibilityContext';
+import { useLanguage } from '../../src/i18n';
 import { useWorshipForm } from '../../src/hooks/useWorshipForm';
 import { useVoiceDictation } from '../../src/hooks/useVoiceDictation';
 import { WorshipFormTopBar } from '../../src/components/worship/WorshipFormTopBar';
@@ -14,6 +15,7 @@ export default function WorshipFormScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
   const { colors, scaledFontSize } = useAccessibility();
+  const { t } = useLanguage();
 
   // 1. Hook de dados do formulário
   const form = useWorshipForm({
@@ -30,7 +32,7 @@ export default function WorshipFormScreen() {
     return (
       <View style={[styles.centerLoading, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingLabel, { color: colors.textSecondary }]}>Carregando dados...</Text>
+        <Text style={[styles.loadingLabel, { color: colors.textSecondary }]}>{t.common.loading}</Text>
       </View>
     );
   }

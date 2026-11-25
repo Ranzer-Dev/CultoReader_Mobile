@@ -17,8 +17,7 @@ import {
   VolumeX,
   Calendar,
   User,
-  Bookmark,
-  Sparkles
+  Bookmark
 } from 'lucide-react-native';
 import { useAccessibility } from '../../src/context/AccessibilityContext';
 import { useLanguage } from '../../src/i18n';
@@ -28,11 +27,12 @@ import { WorshipService, WorshipNote } from '../../src/types';
 import { TTSService } from '../../src/services/audio/TTSService';
 import { BibleReader } from '../../src/components/bible/BibleReader';
 import { LanguageSelectorButton } from '../../src/components/LanguageSelectorButton';
+import { useTranslatedWorships } from '../../src/services/translation/WorshipContentTranslator';
 
 export default function BookModeScreen() {
   const insets = useSafeAreaInsets();
   const { colors, scaledFontSize, speakText } = useAccessibility();
-  const { t } = useLanguage();
+  const { t, language, languageInfo } = useLanguage();
 
   const [activeMode, setActiveMode] = useState<'bible' | 'worship'>('bible');
   const [cultos, setCultos] = useState<WorshipService[]>([]);
@@ -44,12 +44,10 @@ export default function BookModeScreen() {
   const loadAllCultos = useCallback(async () => {
     setLoading(true);
     try {
-      // Carrega cultos ordenados por data cronológica para compor o livro de mensagens
       const result = await WorshipRepository.findPaginated({
         page: 1,
         pageSize: 100
       });
-      // Ordena cronologicamente para fluxo de leitura
       const sorted = [...result.data].sort((a, b) => a.service_date.localeCompare(b.service_date));
       setCultos(sorted);
     } finally {
@@ -63,7 +61,8 @@ export default function BookModeScreen() {
     }, [loadAllCultos])
   );
 
-  const currentCulto: WorshipService | undefined = cultos[currentIndex];
+  const { items: localizedCultos } = useTranslatedWorships(cultos, language);
+  const currentCulto: WorshipService | undefined = localizedCultos[currentIndex];
 
   useEffect(() => {
     if (currentCulto) {
@@ -71,13 +70,12 @@ export default function BookModeScreen() {
     } else {
       setNotes([]);
     }
-    // Para áudio se mudar de página
     TTSService.stop();
     setIsReadingAudio(false);
-  }, [currentCulto]);
+  }, [currentCulto?.id, language]);
 
   const handleNextPage = () => {
-    if (currentIndex < cultos.length - 1) {
+    if (currentIndex < localizedCultos.length - 1) {
       setCurrentIndex(prev => prev + 1);
     }
   };
@@ -94,8 +92,10 @@ export default function BookModeScreen() {
       setIsReadingAudio(false);
     } else if (currentCulto) {
       setIsReadingAudio(true);
-      const content = `Capítulo ${currentIndex + 1}. ${currentCulto.title}. Pregador: ${currentCulto.preacher}. Data: ${currentCulto.service_date}. ${currentCulto.full_transcript || currentCulto.summary}`;
-      await speakText(content);
+      const chapterLabel = t.bible.chapter;
+      const preacherLabel = t.worship.preacher.split('/')[0].trim();
+      const content = `${chapterLabel} ${currentIndex + 1}. ${currentCulto.title}. ${preacherLabel}: ${currentCulto.preacher}. ${currentCulto.full_transcript || currentCulto.summary}`;
+      await speakText(content, { language: languageInfo.speechLocale });
       setIsReadingAudio(false);
     }
   };
@@ -117,7 +117,11 @@ export default function BookModeScreen() {
             styles.segmentedButton,
             activeMode === 'bible' && { backgroundColor: colors.primary }
           ]}
-          onPress={() => setActiveMode('bible')}
+          onPress={() => {
+            TTSService.stop();
+            setIsReadingAudio(false);
+            setActiveMode('bible');
+          }}
           accessibilityRole="button"
           accessibilityLabel={t.bookTab.holyBible}
         >
@@ -143,7 +147,11 @@ export default function BookModeScreen() {
             styles.segmentedButton,
             activeMode === 'worship' && { backgroundColor: colors.primary }
           ]}
-          onPress={() => setActiveMode('worship')}
+          onPress={() => {
+            TTSService.stop();
+            setIsReadingAudio(false);
+            setActiveMode('worship');
+          }}
           accessibilityRole="button"
           accessibilityLabel={t.bookTab.worshipBook}
         >
@@ -175,7 +183,7 @@ export default function BookModeScreen() {
             {t.common.loading}
           </Text>
         </View>
-      ) : cultos.length === 0 ? (
+      ) : localizedCultos.length === 0 ? (
         <View style={[styles.centerLoading, { backgroundColor: colors.background, padding: 32 }]}>
           <Bookmark size={scaledFontSize(48)} color={colors.textMuted} />
           <Text style={[styles.emptyTitle, { color: colors.text, fontSize: scaledFontSize(18) }]}>
@@ -187,170 +195,174 @@ export default function BookModeScreen() {
         </View>
       ) : (
         <View style={{ flex: 1 }}>
-      {/* Cabeçalho do Livro */}
-      <View style={[styles.bookTopBar, { borderBottomColor: colors.border }]}>
-        <View style={styles.chapterTag}>
-          <Bookmark size={scaledFontSize(14)} color={colors.primary} />
-          <Text style={[styles.chapterTagText, { color: colors.primary, fontSize: scaledFontSize(12) }]}>
-            Capítulo {currentIndex + 1} de {cultos.length}
-          </Text>
-        </View>
+          {/* Cabeçalho do Livro */}
+          <View style={[styles.bookTopBar, { borderBottomColor: colors.border }]}>
+            <View style={styles.chapterTag}>
+              <Bookmark size={scaledFontSize(14)} color={colors.primary} />
+              <Text style={[styles.chapterTagText, { color: colors.primary, fontSize: scaledFontSize(12) }]}>
+                {t.bookTab.chapterOf
+                  .replace('{current}', String(currentIndex + 1))
+                  .replace('{total}', String(localizedCultos.length))}
+              </Text>
+            </View>
 
-        <TouchableOpacity
-          style={[styles.audioPill, { backgroundColor: isReadingAudio ? colors.danger : colors.surfaceElevated }]}
-          onPress={handleToggleAudio}
-          accessibilityLabel={isReadingAudio ? 'Pausar leitura em voz alta' : 'Ler capítulo em voz alta'}
-          accessibilityRole="button"
-        >
-          {isReadingAudio ? (
-            <VolumeX size={scaledFontSize(16)} color="#FFFFFF" />
-          ) : (
-            <Volume2 size={scaledFontSize(16)} color={colors.secondary} />
-          )}
-          <Text
-            style={[
-              styles.audioPillText,
-              { color: isReadingAudio ? '#FFFFFF' : colors.text, fontSize: scaledFontSize(12) }
-            ]}
-          >
-            {isReadingAudio ? 'Parar Áudio' : 'Ler em Voz Alta'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Conteúdo da Página do Livro */}
-      <ScrollView contentContainerStyle={styles.bookPage}>
-        {/* Título do Capítulo */}
-        <Text style={[styles.pageTitle, { color: colors.text, fontSize: scaledFontSize(22) }]}>
-          {currentCulto?.title}
-        </Text>
-
-        {/* Metadados do Capítulo */}
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <User size={scaledFontSize(14)} color={colors.textSecondary} />
-            <Text style={[styles.metaText, { color: colors.textSecondary, fontSize: scaledFontSize(13) }]}>
-              {currentCulto?.preacher}
-            </Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Calendar size={scaledFontSize(14)} color={colors.accent} />
-            <Text style={[styles.metaText, { color: colors.accent, fontSize: scaledFontSize(13) }]}>
-              {currentCulto?.service_date}
-            </Text>
-          </View>
-        </View>
-
-        {/* Resumo em Destaque */}
-        {currentCulto?.summary ? (
-          <View style={[styles.summaryBox, { backgroundColor: colors.surfaceElevated, borderColor: colors.primary }]}>
-            <Text style={[styles.summaryTitle, { color: colors.primary, fontSize: scaledFontSize(12) }]}>
-              SÍNTESE DO ENSINAMENTO
-            </Text>
-            <Text style={[styles.summaryBody, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-              {currentCulto.summary}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* Texto Integral da Página */}
-        <Text style={[styles.pageBody, { color: colors.text, fontSize: scaledFontSize(16) }]}>
-          {currentCulto?.full_transcript || '(Sem transcrição detalhada para este capítulo)'}
-        </Text>
-
-        {/* Anotações Registradas no Capítulo */}
-        {notes.length > 0 ? (
-          <View style={styles.notesSection}>
-            <Text style={[styles.notesSectionTitle, { color: colors.textSecondary, fontSize: scaledFontSize(14) }]}>
-              Anotações deste Capítulo ({notes.length})
-            </Text>
-            {notes.map(n => (
-              <View
-                key={n.id}
+            <TouchableOpacity
+              style={[styles.audioPill, { backgroundColor: isReadingAudio ? colors.danger : colors.surfaceElevated }]}
+              onPress={handleToggleAudio}
+              accessibilityLabel={isReadingAudio ? t.bookTab.stopAudio : t.bookTab.readAloud}
+              accessibilityRole="button"
+            >
+              {isReadingAudio ? (
+                <VolumeX size={scaledFontSize(16)} color="#FFFFFF" />
+              ) : (
+                <Volume2 size={scaledFontSize(16)} color={colors.secondary} />
+              )}
+              <Text
                 style={[
-                  styles.noteItem,
-                  { backgroundColor: colors.surface, borderLeftColor: n.color_tag || colors.accent }
+                  styles.audioPillText,
+                  { color: isReadingAudio ? '#FFFFFF' : colors.text, fontSize: scaledFontSize(12) }
                 ]}
               >
-                <Text style={[styles.noteQuote, { color: colors.textMuted, fontSize: scaledFontSize(12) }]}>
-                  "{n.selected_text}"
-                </Text>
-                <Text style={[styles.noteText, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-                  {n.note_text}
+                {isReadingAudio ? t.bookTab.stopAudio : t.bookTab.readAloud}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Conteúdo da Página do Livro */}
+          <ScrollView contentContainerStyle={styles.bookPage}>
+            {/* Título do Capítulo */}
+            <Text style={[styles.pageTitle, { color: colors.text, fontSize: scaledFontSize(22) }]}>
+              {currentCulto?.title}
+            </Text>
+
+            {/* Metadados do Capítulo */}
+            <View style={styles.metaRow}>
+              <View style={styles.metaItem}>
+                <User size={scaledFontSize(14)} color={colors.textSecondary} />
+                <Text style={[styles.metaText, { color: colors.textSecondary, fontSize: scaledFontSize(13) }]}>
+                  {currentCulto?.preacher}
                 </Text>
               </View>
-            ))}
-          </View>
-        ) : null}
-      </ScrollView>
+              <View style={styles.metaItem}>
+                <Calendar size={scaledFontSize(14)} color={colors.accent} />
+                <Text style={[styles.metaText, { color: colors.accent, fontSize: scaledFontSize(13) }]}>
+                  {currentCulto?.service_date}
+                </Text>
+              </View>
+            </View>
 
-      {/* Controles de Navegação de Página na Thumb Zone */}
-      <View
-        style={[
-          styles.bookThumbZone,
-          {
-            backgroundColor: colors.thumbZoneBackground,
-            borderTopColor: colors.border,
-            paddingBottom: insets.bottom + 10
-          }
-        ]}
-      >
-        <TouchableOpacity
-          style={[
-            styles.pageTurnButton,
-            { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
-            currentIndex === 0 && styles.disabledTurnButton
-          ]}
-          onPress={handlePrevPage}
-          disabled={currentIndex === 0}
-          accessibilityLabel="Capítulo anterior"
-          accessibilityRole="button"
-        >
-          <ChevronLeft size={scaledFontSize(20)} color={currentIndex === 0 ? colors.textMuted : colors.text} />
-          <Text
+            {/* Resumo em Destaque */}
+            {currentCulto?.summary ? (
+              <View style={[styles.summaryBox, { backgroundColor: colors.surfaceElevated, borderColor: colors.primary }]}>
+                <Text style={[styles.summaryTitle, { color: colors.primary, fontSize: scaledFontSize(12) }]}>
+                  {t.bookTab.teachingSummary}
+                </Text>
+                <Text style={[styles.summaryBody, { color: colors.text, fontSize: scaledFontSize(14) }]}>
+                  {currentCulto.summary}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Texto Integral da Página */}
+            <Text style={[styles.pageBody, { color: colors.text, fontSize: scaledFontSize(16) }]}>
+              {currentCulto?.full_transcript || t.bookTab.noTranscript}
+            </Text>
+
+            {/* Anotações Registradas no Capítulo */}
+            {notes.length > 0 ? (
+              <View style={styles.notesSection}>
+                <Text style={[styles.notesSectionTitle, { color: colors.textSecondary, fontSize: scaledFontSize(14) }]}>
+                  {t.bookTab.chapterNotes.replace('{count}', String(notes.length))}
+                </Text>
+                {notes.map(n => (
+                  <View
+                    key={n.id}
+                    style={[
+                      styles.noteItem,
+                      { backgroundColor: colors.surface, borderLeftColor: n.color_tag || colors.accent }
+                    ]}
+                  >
+                    <Text style={[styles.noteQuote, { color: colors.textMuted, fontSize: scaledFontSize(12) }]}>
+                      "{n.selected_text}"
+                    </Text>
+                    <Text style={[styles.noteText, { color: colors.text, fontSize: scaledFontSize(14) }]}>
+                      {n.note_text}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </ScrollView>
+
+          {/* Controles de Navegação de Página na Thumb Zone */}
+          <View
             style={[
-              styles.turnButtonText,
-              { color: currentIndex === 0 ? colors.textMuted : colors.text, fontSize: scaledFontSize(14) }
-            ]}
-          >
-            Pág. Anterior
-          </Text>
-        </TouchableOpacity>
-
-        <View style={[styles.pageBadge, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.pageBadgeText, { color: colors.text, fontSize: scaledFontSize(13) }]}>
-            Página {currentIndex + 1} de {cultos.length}
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={[
-            styles.pageTurnButton,
-            { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
-            currentIndex >= cultos.length - 1 && styles.disabledTurnButton
-          ]}
-          onPress={handleNextPage}
-          disabled={currentIndex >= cultos.length - 1}
-          accessibilityLabel="Próximo capítulo"
-          accessibilityRole="button"
-        >
-          <Text
-            style={[
-              styles.turnButtonText,
+              styles.bookThumbZone,
               {
-                color: currentIndex >= cultos.length - 1 ? colors.textMuted : colors.text,
-                fontSize: scaledFontSize(14)
+                backgroundColor: colors.thumbZoneBackground,
+                borderTopColor: colors.border,
+                paddingBottom: insets.bottom + 10
               }
             ]}
           >
-            Próxima Pág.
-          </Text>
-          <ChevronRight
-            size={scaledFontSize(20)}
-            color={currentIndex >= cultos.length - 1 ? colors.textMuted : colors.text}
-          />
-        </TouchableOpacity>
-      </View>
+            <TouchableOpacity
+              style={[
+                styles.pageTurnButton,
+                { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
+                currentIndex === 0 && styles.disabledTurnButton
+              ]}
+              onPress={handlePrevPage}
+              disabled={currentIndex === 0}
+              accessibilityLabel={t.bookTab.prevPage}
+              accessibilityRole="button"
+            >
+              <ChevronLeft size={scaledFontSize(20)} color={currentIndex === 0 ? colors.textMuted : colors.text} />
+              <Text
+                style={[
+                  styles.turnButtonText,
+                  { color: currentIndex === 0 ? colors.textMuted : colors.text, fontSize: scaledFontSize(14) }
+                ]}
+              >
+                {t.bookTab.prevPage}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={[styles.pageBadge, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.pageBadgeText, { color: colors.text, fontSize: scaledFontSize(13) }]}>
+                {t.bookTab.pageOf
+                  .replace('{current}', String(currentIndex + 1))
+                  .replace('{total}', String(localizedCultos.length))}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.pageTurnButton,
+                { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
+                currentIndex >= localizedCultos.length - 1 && styles.disabledTurnButton
+              ]}
+              onPress={handleNextPage}
+              disabled={currentIndex >= localizedCultos.length - 1}
+              accessibilityLabel={t.bookTab.nextPage}
+              accessibilityRole="button"
+            >
+              <Text
+                style={[
+                  styles.turnButtonText,
+                  {
+                    color: currentIndex >= localizedCultos.length - 1 ? colors.textMuted : colors.text,
+                    fontSize: scaledFontSize(14)
+                  }
+                ]}
+              >
+                {t.bookTab.nextPage}
+              </Text>
+              <ChevronRight
+                size={scaledFontSize(20)}
+                color={currentIndex >= localizedCultos.length - 1 ? colors.textMuted : colors.text}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </View>
@@ -514,4 +526,3 @@ const styles = StyleSheet.create({
     textAlign: 'center'
   }
 });
-

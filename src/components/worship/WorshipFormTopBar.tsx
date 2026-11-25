@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
 import { ThemeColors } from '../../theme/tokens';
+import { useLanguage } from '../../i18n';
 
 interface WorshipFormTopBarProps {
   isEditing: boolean;
@@ -16,18 +17,20 @@ export function WorshipFormTopBar({
   colors,
   scaledFontSize
 }: WorshipFormTopBarProps) {
+  const { t } = useLanguage();
+
   return (
     <View style={styles.topBar}>
       <TouchableOpacity
         onPress={onBack}
         style={[styles.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        accessibilityLabel="Voltar"
+        accessibilityLabel={t.common.back}
         accessibilityRole="button"
       >
         <ArrowLeft size={scaledFontSize(20)} color={colors.text} />
       </TouchableOpacity>
       <Text style={[styles.topBarTitle, { color: colors.text, fontSize: scaledFontSize(18) }]}>
-        {isEditing ? 'Editar Culto' : 'Cadastrar Culto'}
+        {isEditing ? t.worship.editWorship : t.worship.registerWorship}
       </Text>
       <View style={{ width: 40 }} />
     </View>

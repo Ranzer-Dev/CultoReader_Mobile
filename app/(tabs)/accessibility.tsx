@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,7 @@ import { SpeakForMeSection } from '../../src/components/accessibility/SpeakForMe
 
 export default function AccessibilityScreen() {
   const insets = useSafeAreaInsets();
-  const { t, language, languages, setLanguage } = useLanguage();
+  const { t, language, languageInfo, languages, setLanguage } = useLanguage();
   const {
     settings,
     colors,
@@ -38,34 +38,33 @@ export default function AccessibilityScreen() {
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
 
-  const loadVoices = async () => {
+  const loadVoices = useCallback(async () => {
     try {
-      const voices = await TTSService.getAvailablePtBrVoices();
+      const targetLocale = languageInfo.speechLocale;
+      const voices = await TTSService.getAvailableVoicesForLanguage(targetLocale);
       setAvailableVoices(voices);
-      const best = await TTSService.getBestLocalVoiceAsync();
-      if (best) setSelectedVoiceId(best);
+      const best = await TTSService.getBestVoiceForLanguageAsync(targetLocale);
+      setSelectedVoiceId(best || '');
     } catch {}
-  };
+  }, [languageInfo.speechLocale]);
 
   useEffect(() => {
     loadVoices();
-  }, []);
+  }, [loadVoices]);
 
   const handleSelectVoice = (voiceId: string) => {
     setSelectedVoiceId(voiceId);
-    TTSService.setUserPreferredVoice(voiceId);
+    TTSService.setUserPreferredVoice(voiceId, languageInfo.speechLocale);
   };
 
   const handleTestSpecificVoice = async (voiceId: string) => {
     setPlayingVoiceId(voiceId);
     handleSelectVoice(voiceId);
-    await speakText(
-      'O Senhor é o meu pastor; de nada terei falta. Ele me faz repousar em pastos verdejantes.',
-      { voice: voiceId }
-    );
-    setTimeout(() => {
-      setPlayingVoiceId(null);
-    }, 4500);
+    await speakText(t.accessibility.ttsDemoPhrase, {
+      voice: voiceId,
+      language: languageInfo.speechLocale
+    });
+    setPlayingVoiceId(null);
   };
 
   const handleOpenTtsSettings = async () => {
@@ -163,7 +162,7 @@ export default function AccessibilityScreen() {
           onToggleSpeakForMe={toggleSpeakForMe}
           customSpeakText={customSpeakText}
           onChangeCustomSpeakText={setCustomSpeakText}
-          onSpeak={speakText}
+          onSpeak={(text) => speakText(text, { language: languageInfo.speechLocale })}
           colors={colors}
           scaledFontSize={scaledFontSize}
         />

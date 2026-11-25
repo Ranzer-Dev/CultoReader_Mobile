@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Type } from 'lucide-react-native';
 import { ThemeColors } from '../../theme/tokens';
+import { useLanguage } from '../../i18n';
 
 interface FontSizeSectionProps {
   currentScale: number;
@@ -10,34 +11,36 @@ interface FontSizeSectionProps {
   scaledFontSize: (size: number) => number;
 }
 
-const FONT_OPTIONS = [
-  { label: 'Normal (100%)', scale: 1.0 },
-  { label: 'Médio (125%)', scale: 1.25 },
-  { label: 'Grande (150%)', scale: 1.5 },
-  { label: 'Extra Grande (175%)', scale: 1.75 },
-  { label: 'Máximo (200%)', scale: 2.0 }
-];
-
 export function FontSizeSection({
   currentScale,
   onSelectScale,
   colors,
   scaledFontSize
 }: FontSizeSectionProps) {
+  const { t } = useLanguage();
+
+  const fontOptions = [
+    { label: t.accessibility.fontOptions.normal, scale: 1.0 },
+    { label: t.accessibility.fontOptions.medium, scale: 1.25 },
+    { label: t.accessibility.fontOptions.large, scale: 1.5 },
+    { label: t.accessibility.fontOptions.extraLarge, scale: 1.75 },
+    { label: t.accessibility.fontOptions.max, scale: 2.0 }
+  ];
+
   return (
     <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.sectionHeader}>
         <Type size={scaledFontSize(20)} color={colors.primary} />
         <Text style={[styles.sectionTitle, { color: colors.text, fontSize: scaledFontSize(16) }]}>
-          Tamanho da Fonte no Aplicativo
+          {t.accessibility.fontSize}
         </Text>
       </View>
       <Text style={[styles.sectionDesc, { color: colors.textSecondary, fontSize: scaledFontSize(13) }]}>
-        Aumenta a tipografia de todas as telas, botões, transcrições e menus simultaneamente.
+        {t.accessibility.fontSizeDescription}
       </Text>
 
       <View style={styles.optionsWrap}>
-        {FONT_OPTIONS.map((opt) => {
+        {fontOptions.map((opt) => {
           const isSelected = Math.abs(currentScale - opt.scale) < 0.05;
           return (
             <TouchableOpacity
@@ -49,7 +52,7 @@ export function FontSizeSection({
               ]}
               onPress={() => onSelectScale(opt.scale)}
               accessibilityRole="button"
-              accessibilityLabel={`Tamanho de fonte ${opt.label}`}
+              accessibilityLabel={`${t.accessibility.fontSize} ${opt.label}`}
             >
               <Text
                 style={[
@@ -67,10 +70,10 @@ export function FontSizeSection({
       {/* Prévia da Fonte */}
       <View style={[styles.previewBox, { backgroundColor: colors.surfaceElevated }]}>
         <Text style={[styles.previewLabel, { color: colors.textMuted, fontSize: scaledFontSize(11) }]}>
-          PRÉVIA DO TEXTO ESCALADO:
+          {t.accessibility.fontPreviewLabel}
         </Text>
         <Text style={[styles.previewText, { color: colors.text, fontSize: scaledFontSize(16) }]}>
-          "O Senhor é o meu pastor; nada me faltará." (Salmos 23:1)
+          {t.accessibility.fontPreviewVerse}
         </Text>
       </View>
     </View>

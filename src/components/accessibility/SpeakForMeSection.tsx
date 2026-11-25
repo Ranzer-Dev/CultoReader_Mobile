@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Switch, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { MessageSquare, Volume2 } from 'lucide-react-native';
 import { ThemeColors } from '../../theme/tokens';
+import { useLanguage } from '../../i18n';
 
 interface SpeakForMeSectionProps {
   speakForMeEnabled: boolean;
@@ -13,13 +14,6 @@ interface SpeakForMeSectionProps {
   scaledFontSize: (size: number) => number;
 }
 
-const QUICK_SPEECH_CARDS = [
-  'Amém! Concordo com a palavra.',
-  'Poderia repetir o versículo lido?',
-  'Preciso de uma oração após o culto.',
-  'Onde fica a secretaria da igreja?'
-];
-
 export function SpeakForMeSection({
   speakForMeEnabled,
   onToggleSpeakForMe,
@@ -29,44 +23,46 @@ export function SpeakForMeSection({
   colors,
   scaledFontSize
 }: SpeakForMeSectionProps) {
+  const { t } = useLanguage();
+
   return (
     <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.sectionHeader}>
         <MessageSquare size={scaledFontSize(20)} color={colors.highlight} />
         <Text style={[styles.sectionTitle, { color: colors.text, fontSize: scaledFontSize(16) }]}>
-          Mecanismos para Mudos (Falar por Mim)
+          {t.accessibility.speakForMeTitle}
         </Text>
       </View>
 
       <View style={styles.toggleRow}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.toggleTitle, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-            Cartões de Fala Rápida Assistida
+            {t.accessibility.speakForMe}
           </Text>
           <Text style={[styles.toggleDesc, { color: colors.textMuted, fontSize: scaledFontSize(12) }]}>
-            Permite comunicar-se na congregação usando sintetizador de voz (TTS).
+            {t.accessibility.speakForMeDescription}
           </Text>
         </View>
         <Switch
           value={speakForMeEnabled}
           onValueChange={onToggleSpeakForMe}
           trackColor={{ false: colors.surfaceElevated, true: colors.primary }}
-          accessibilityLabel="Alternar cartões de fala rápida"
+          accessibilityLabel={t.accessibility.speakForMe}
         />
       </View>
 
       {speakForMeEnabled ? (
         <View style={styles.speakForMeSection}>
           <Text style={[styles.quickSpeechHeader, { color: colors.textSecondary, fontSize: scaledFontSize(12) }]}>
-            TOQUE PARA O APLICATIVO FALAR POR VOCÊ:
+            {t.accessibility.speakForMeHeader}
           </Text>
-          {QUICK_SPEECH_CARDS.map((phrase, i) => (
+          {t.accessibility.quickSpeechCards.map((phrase, i) => (
             <TouchableOpacity
               key={i}
               style={[styles.phraseCard, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
               onPress={() => onSpeak(phrase)}
               accessibilityRole="button"
-              accessibilityLabel={`Falar frase: ${phrase}`}
+              accessibilityLabel={phrase}
             >
               <Volume2 size={scaledFontSize(16)} color={colors.accent} />
               <Text style={[styles.phraseCardText, { color: colors.text, fontSize: scaledFontSize(13) }]}>
@@ -87,7 +83,7 @@ export function SpeakForMeSection({
                   fontSize: scaledFontSize(13)
                 }
               ]}
-              placeholder="Digite o que deseja falar..."
+              placeholder={t.accessibility.speakForMePlaceholder}
               placeholderTextColor={colors.textMuted}
               value={customSpeakText}
               onChangeText={onChangeCustomSpeakText}
@@ -104,7 +100,7 @@ export function SpeakForMeSection({
                 onChangeCustomSpeakText('');
               }}
               accessibilityRole="button"
-              accessibilityLabel="Falar texto digitado"
+              accessibilityLabel={t.accessibility.speakForMe}
             >
               <Volume2 size={scaledFontSize(18)} color={colors.primaryText} />
             </TouchableOpacity>

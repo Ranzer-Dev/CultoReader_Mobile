@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useAccessibility } from '../context/AccessibilityContext';
+import { useLanguage } from '../i18n';
 
 interface PaginationControlsProps {
   currentPage: number;
@@ -19,16 +20,23 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
   pageSize
 }) => {
   const { colors, scaledFontSize } = useAccessibility();
+  const { t } = useLanguage();
 
   const startRecord = (currentPage - 1) * pageSize + 1;
   const endRecord = Math.min(currentPage * pageSize, totalRecords);
 
+  const infoLabel =
+    totalRecords === 0
+      ? t.common.noRecordsFound
+      : t.common.showingRecords
+          .replace('{start}', String(startRecord))
+          .replace('{end}', String(endRecord))
+          .replace('{total}', String(totalRecords));
+
   return (
     <View style={[styles.container, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <Text style={[styles.infoText, { color: colors.textSecondary, fontSize: scaledFontSize(13) }]}>
-        {totalRecords === 0
-          ? 'Nenhum registro encontrado'
-          : `Exibindo ${startRecord}-${endRecord} de ${totalRecords} registros`}
+        {infoLabel}
       </Text>
 
       <View style={styles.buttonsRow}>
@@ -40,7 +48,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
           ]}
           disabled={currentPage <= 1}
           onPress={() => onPageChange(currentPage - 1)}
-          accessibilityLabel="Página anterior"
+          accessibilityLabel={t.common.previous}
           accessibilityRole="button"
         >
           <ChevronLeft size={scaledFontSize(18)} color={currentPage <= 1 ? colors.textMuted : colors.text} />
@@ -50,7 +58,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
               { color: currentPage <= 1 ? colors.textMuted : colors.text, fontSize: scaledFontSize(14) }
             ]}
           >
-            Anterior
+            {t.common.previous}
           </Text>
         </TouchableOpacity>
 
@@ -68,7 +76,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
           ]}
           disabled={currentPage >= totalPages}
           onPress={() => onPageChange(currentPage + 1)}
-          accessibilityLabel="Próxima página"
+          accessibilityLabel={t.common.next}
           accessibilityRole="button"
         >
           <Text
@@ -77,7 +85,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
               { color: currentPage >= totalPages ? colors.textMuted : colors.text, fontSize: scaledFontSize(14) }
             ]}
           >
-            Próxima
+            {t.common.next}
           </Text>
           <ChevronRight
             size={scaledFontSize(18)}
@@ -133,4 +141,3 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   }
 });
-

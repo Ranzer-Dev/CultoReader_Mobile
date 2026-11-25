@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Switch, StyleSheet } from 'react-native';
 import { Hand } from 'lucide-react-native';
 import { ThemeColors } from '../../theme/tokens';
+import { useLanguage } from '../../i18n';
 
 interface SensoryAssistSectionProps {
   librasEnabled: boolean;
@@ -16,29 +17,31 @@ export function SensoryAssistSection({
   colors,
   scaledFontSize
 }: SensoryAssistSectionProps) {
+  const { t } = useLanguage();
+
   return (
     <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.sectionHeader}>
         <Hand size={scaledFontSize(20)} color={colors.accent} />
         <Text style={[styles.sectionTitle, { color: colors.text, fontSize: scaledFontSize(16) }]}>
-          Mecanismos para Surdos
+          {t.accessibility.deafSectionTitle}
         </Text>
       </View>
 
       <View style={styles.toggleRow}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.toggleTitle, { color: colors.text, fontSize: scaledFontSize(14) }]}>
-            Suporte à Língua de Sinais (Libras)
+            {t.accessibility.librasSupport}
           </Text>
           <Text style={[styles.toggleDesc, { color: colors.textMuted, fontSize: scaledFontSize(12) }]}>
-            Exibe painel de interpretação e glossário de termos bíblicos em sinais.
+            {t.accessibility.librasDescription}
           </Text>
         </View>
         <Switch
           value={librasEnabled}
           onValueChange={onToggleLibras}
           trackColor={{ false: colors.surfaceElevated, true: colors.primary }}
-          accessibilityLabel="Alternar suporte a Libras"
+          accessibilityLabel={t.accessibility.librasSupport}
         />
       </View>
 
@@ -46,7 +49,7 @@ export function SensoryAssistSection({
         <View style={[styles.librasPreview, { backgroundColor: colors.surfaceElevated }]}>
           <Hand size={scaledFontSize(32)} color={colors.accent} />
           <Text style={[styles.librasText, { color: colors.text, fontSize: scaledFontSize(13) }]}>
-            Módulo de Libras ativado: transcrições ao vivo contam com sinalização visual de palavras-chave.
+            {t.accessibility.librasActivePreview}
           </Text>
         </View>
       ) : null}
