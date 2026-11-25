@@ -89,6 +89,11 @@ export async function runMigrations(db: SQLiteDatabase): Promise<void> {
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
     CREATE INDEX IF NOT EXISTS idx_bible_notes_loc ON bible_notes(book, chapter, verse);
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { WorshipService } from '../../types';
 import { SupportedLanguage } from '../../i18n/types';
 import { TranslationService } from './TranslationService';
@@ -434,6 +434,8 @@ export async function translateWorshipRecord(
 
 /**
  * Hook reativo que entrega automaticamente uma lista de cultos no idioma selecionado no topo do aplicativo.
+ * Usa assinatura estável de conteúdo (worshipsKey) para impedir qualquer loop de re-renderização
+ * mesmo quando o componente pai recria arrays vazios durante estados de carregamento.
  */
 export function useTranslatedWorships(
   worships: WorshipService[],
@@ -442,17 +444,36 @@ export function useTranslatedWorships(
   const [items, setItems] = useState<WorshipService[]>(worships);
   const [isTranslating, setIsTranslating] = useState(false);
 
+  const worshipsRef = useRef<WorshipService[]>(worships);
+  worshipsRef.current = worships;
+
+  // Assinatura primitiva (string) estável: só muda quando os registros reais mudam
+  const worshipsKey = useMemo(
+    () =>
+      (worships || [])
+        .map(w => `${w.id}:${w.updated_at || ''}:${w.title}:${w.summary || ''}`)
+        .join('|'),
+    [worships]
+  );
+
   useEffect(() => {
     let cancelled = false;
+    const currentList = worshipsRef.current || [];
 
-    if (!worships || worships.length === 0 || targetLang === 'pt') {
-      setItems(worships);
+    if (currentList.length === 0) {
+      setItems(prev => (prev.length === 0 ? prev : []));
+      setIsTranslating(false);
+      return;
+    }
+
+    if (targetLang === 'pt') {
+      setItems(currentList);
       setIsTranslating(false);
       return;
     }
 
     // Aplica imediatamente as traduções instantâneas (seeds/cache) sem piscar a tela
-    const quickMapped = worships.map(w => {
+    const quickMapped = currentList.map(w => {
       const seeded = SEEDED_WORSHIP_TRANSLATIONS[w.title?.trim()]?.[targetLang];
       if (seeded) {
         return { ...w, ...seeded };
@@ -463,7 +484,7 @@ export function useTranslatedWorships(
     setItems(quickMapped);
 
     // Verifica se existe algum culto customizado que precise de ML Kit assíncrono
-    const needsDynamic = worships.some(w => {
+    const needsDynamic = currentList.some(w => {
       const seeded = SEEDED_WORSHIP_TRANSLATIONS[w.title?.trim()]?.[targetLang];
       const cacheKey = `${w.id}_${w.updated_at || ''}_${targetLang}`;
       return !seeded && !dynamicWorshipCache.has(cacheKey);
@@ -475,7 +496,7 @@ export function useTranslatedWorships(
     }
 
     setIsTranslating(true);
-    Promise.all(worships.map(w => translateWorshipRecord(w, targetLang)))
+    Promise.all(currentList.map(w => translateWorshipRecord(w, targetLang)))
       .then(results => {
         if (!cancelled) {
           setItems(results);
@@ -490,7 +511,7 @@ export function useTranslatedWorships(
     return () => {
       cancelled = true;
     };
-  }, [worships, targetLang]);
+  }, [worshipsKey, targetLang]);
 
   return { items, isTranslating };
 }

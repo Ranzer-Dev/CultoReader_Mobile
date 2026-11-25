@@ -1,6 +1,15 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 
 export async function runSeeds(db: SQLiteDatabase): Promise<void> {
+  // Fast-path na 2ª abertura em diante: se já existem versículos e cultos cadastrados, não faz nenhuma escrita!
+  const [versesCount, worshipsCount] = await Promise.all([
+    db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM bible_verses;'),
+    db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM worship_services;')
+  ]);
+  if ((versesCount?.count || 0) > 0 && (worshipsCount?.count || 0) > 0) {
+    return;
+  }
+
   // 1. Cadastrar versão da Bíblia (Almeida Revista e Atualizada - ARA e NVI)
   await db.runAsync(`
     INSERT OR IGNORE INTO bible_versions (code, name, language, is_default)

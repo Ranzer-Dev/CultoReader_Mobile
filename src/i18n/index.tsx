@@ -39,16 +39,10 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [language, setLanguageState] = useState<SupportedLanguage>(defaultLanguage);
 
   useEffect(() => {
-    // Carrega preferência de idioma salva no banco de dados SQLite
+    // Carrega preferência de idioma salva no banco de dados SQLite (tabela criada em migrations.ts)
     const loadStoredLanguage = async () => {
       try {
         const db = await getDatabase();
-        await db.execAsync(`
-          CREATE TABLE IF NOT EXISTS app_settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-          );
-        `);
         const row = await db.getFirstAsync<{ value: string }>(
           `SELECT value FROM app_settings WHERE key = 'app_language';`
         );

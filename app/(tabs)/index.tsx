@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ import { useTranslatedWorships } from '../../src/services/translation/WorshipCon
 import { TTSService } from '../../src/services/audio/TTSService';
 
 const PAGE_SIZE = 4; // Exibe de 4 em 4 para navegação fluida e clara entre páginas
+const EMPTY_WORSHIPS: WorshipService[] = [];
 
 export default function CultosCrudScreen() {
   const insets = useSafeAreaInsets();
@@ -42,8 +43,12 @@ export default function CultosCrudScreen() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
+  const errorLabelRef = useRef(t.common.error);
+  errorLabelRef.current = t.common.error;
+  const loadRequestIdRef = useRef(0);
 
   const loadData = useCallback(async (page: number, search: string) => {
+    const reqId = ++loadRequestIdRef.current;
     setLoading(true);
     try {
       const result = await WorshipRepository.findPaginated({
@@ -51,13 +56,19 @@ export default function CultosCrudScreen() {
         pageSize: PAGE_SIZE,
         search
       });
-      setPaginatedData(result);
+      if (reqId === loadRequestIdRef.current) {
+        setPaginatedData(result);
+      }
     } catch (err: any) {
-      Alert.alert(t.common.error, err.message);
+      if (reqId === loadRequestIdRef.current) {
+        Alert.alert(errorLabelRef.current, err?.message || 'SQLite error');
+      }
     } finally {
-      setLoading(false);
+      if (reqId === loadRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [t.common.error]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -70,7 +81,10 @@ export default function CultosCrudScreen() {
     TTSService.stop().catch(() => {});
   }, [language]);
 
-  const { items: localizedWorships } = useTranslatedWorships(paginatedData?.data || [], language);
+  const { items: localizedWorships } = useTranslatedWorships(
+    paginatedData?.data ?? EMPTY_WORSHIPS,
+    language
+  );
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
