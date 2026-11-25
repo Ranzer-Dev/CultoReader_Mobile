@@ -1,4 +1,5 @@
 import * as Speech from 'expo-speech';
+import { SmartPunctuation } from '../../utils/smartPunctuation';
 
 export interface HumanFriendlyVoice {
   identifier: string;
@@ -17,9 +18,14 @@ export class TTSService {
   private static cachedVoiceByLang = new Map<string, string>();
   private static userPreferredVoiceByLang = new Map<string, string>();
   private static activeResolve: (() => void) | null = null;
+  private static pauseTimer: ReturnType<typeof setTimeout> | null = null;
   private static speakGeneration = 0;
 
   private static resolveActive(): void {
+    if (this.pauseTimer) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
     if (this.activeResolve) {
       const fn = this.activeResolve;
       this.activeResolve = null;
@@ -232,7 +238,7 @@ export class TTSService {
             ? `${pre}${book}, chapter ${cap}, verses ${vStart} to ${vEnd}. `
             : `${pre}${book}, chapter ${cap}, verse ${vStart}. `
       );
-      return this.cleanCommonSpeechArtifacts(normalized);
+      return this.cleanCommonSpeechArtifacts(SmartPunctuation.ensureReadableBreathing(normalized, 'en-US'));
     }
 
     // 2. Normalização para Espanhol
@@ -245,7 +251,7 @@ export class TTSService {
             ? `${pre}${book}, capítulo ${cap}, versículos ${vStart} al ${vEnd}. `
             : `${pre}${book}, capítulo ${cap}, versículo ${vStart}. `
       );
-      return this.cleanCommonSpeechArtifacts(normalized);
+      return this.cleanCommonSpeechArtifacts(SmartPunctuation.ensureReadableBreathing(normalized, 'es-ES'));
     }
 
     // 3. Normalização para Francês
@@ -258,7 +264,7 @@ export class TTSService {
             ? `${pre}${book}, chapitre ${cap}, versets ${vStart} à ${vEnd}. `
             : `${pre}${book}, chapitre ${cap}, verset ${vStart}. `
       );
-      return this.cleanCommonSpeechArtifacts(normalized);
+      return this.cleanCommonSpeechArtifacts(SmartPunctuation.ensureReadableBreathing(normalized, 'fr-FR'));
     }
 
     // 4. Normalização para Suaíli
@@ -389,7 +395,8 @@ export class TTSService {
       }
     );
 
-    // 5.5. Limpeza final NFC + pontuação natural
+    // 5.5. Garante respiração natural mesmo em gravações antigas sem pontuação + limpeza NFC final
+    normalized = SmartPunctuation.ensureReadableBreathing(normalized, 'pt-BR');
     return this.cleanCommonSpeechArtifacts(normalized);
   }
 
@@ -593,41 +600,82 @@ export class TTSService {
 
     if (myGeneration !== this.speakGeneration) return;
 
-    // 4. Fala e aguarda conclusão (onDone / onStopped / onError) para permitir leitura contínua sem cortes
-    return new Promise<void>((resolve) => {
-      const finish = () => {
-        if (this.activeResolve === finish) {
-          this.activeResolve = null;
-        }
-        if (myGeneration === this.speakGeneration) {
-          this.isSpeakingNow = false;
-        }
-        options?.onDone?.();
-        resolve();
-      };
+    // 4. Divide textos longos em frases com pausas reais de respiração (evita leitura corrida e limite de 4000 chars do Android)
+    const chunks = SmartPunctuation.splitForBreathingTTS(cleanSpokenText, 280);
+    let startedNotified = false;
 
-      this.activeResolve = finish;
+    const speakSingleChunk = (chunkText: string): Promise<void> => {
+      return new Promise<void>((resolve) => {
+        if (myGeneration !== this.speakGeneration) {
+          resolve();
+          return;
+        }
+        const finishChunk = () => {
+          if (this.activeResolve === finishChunk) {
+            this.activeResolve = null;
+          }
+          resolve();
+        };
+        this.activeResolve = finishChunk;
 
-      try {
-        Speech.speak(cleanSpokenText, {
-          language: activeLang,
-          rate: options?.rate ?? 0.94,
-          pitch: options?.pitch ?? 1.0,
-          voice: preferredVoice,
-          onStart: () => {
-            if (myGeneration === this.speakGeneration) {
-              this.isSpeakingNow = true;
-            }
-            options?.onStart?.();
-          },
-          onDone: finish,
-          onStopped: finish,
-          onError: finish
-        });
-      } catch {
-        finish();
+        try {
+          Speech.speak(chunkText, {
+            language: activeLang,
+            rate: options?.rate ?? 0.94,
+            pitch: options?.pitch ?? 1.0,
+            voice: preferredVoice,
+            onStart: () => {
+              if (myGeneration === this.speakGeneration) {
+                this.isSpeakingNow = true;
+                if (!startedNotified) {
+                  startedNotified = true;
+                  options?.onStart?.();
+                }
+              }
+            },
+            onDone: finishChunk,
+            onStopped: finishChunk,
+            onError: finishChunk
+          });
+        } catch {
+          finishChunk();
+        }
+      });
+    };
+
+    const waitBreathPause = (ms: number): Promise<void> => {
+      if (ms <= 0 || myGeneration !== this.speakGeneration) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        const donePause = () => {
+          if (this.activeResolve === donePause) {
+            this.activeResolve = null;
+          }
+          if (this.pauseTimer) {
+            clearTimeout(this.pauseTimer);
+            this.pauseTimer = null;
+          }
+          resolve();
+        };
+        this.activeResolve = donePause;
+        this.pauseTimer = setTimeout(donePause, ms);
+      });
+    };
+
+    try {
+      for (const chunk of chunks) {
+        if (myGeneration !== this.speakGeneration) break;
+        await speakSingleChunk(chunk.text);
+        if (myGeneration !== this.speakGeneration) break;
+        if (chunk.pauseAfterMs > 0) {
+          await waitBreathPause(chunk.pauseAfterMs);
+        }
       }
-    });
+    } finally {
+      if (myGeneration === this.speakGeneration) {
+        this.isSpeakingNow = false;
+      }
+      options?.onDone?.();
+    }
   }
 
   static async stop(): Promise<void> {

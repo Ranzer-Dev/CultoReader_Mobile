@@ -15,7 +15,7 @@ export default function WorshipFormScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
   const { colors, scaledFontSize } = useAccessibility();
-  const { t } = useLanguage();
+  const { t, languageInfo } = useLanguage();
 
   // 1. Hook de dados do formulário
   const form = useWorshipForm({
@@ -25,7 +25,8 @@ export default function WorshipFormScreen() {
 
   // 2. Hook de ditado por voz (desacoplado do componente nativo)
   const dictation = useVoiceDictation({
-    onTextAppend: form.appendTranscriptChunk
+    onTextAppend: form.appendTranscriptChunk,
+    lang: languageInfo.speechLocale
   });
 
   if (form.loading) {

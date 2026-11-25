@@ -1,4 +1,5 @@
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition/build/ExpoSpeechRecognitionModule';
+import { SmartPunctuation } from '../../utils/smartPunctuation';
 
 export interface TranscriptionListener {
   onTextUpdate: (fullText: string, latestChunk: string, isFinal: boolean) => void;
@@ -71,14 +72,14 @@ export class TranscriptionService {
       });
 
       // speechend: pausa física na voz do pregador.
-      // Consolida imediatamente o trecho falado no histórico imutável para NUNCA perder texto em pausas.
+      // Consolida imediatamente o trecho falado no histórico imutável com pontuação automática.
       const subSpeechEnd = ExpoSpeechRecognitionModule.addListener('speechend', () => {
         if (this.currentPartial.trim()) {
           const chunk = this.currentPartial.trim();
           this.currentPartial = '';
-          const added = this.commitText(chunk);
-          if (added) {
-            this.notifyText(this.getFullTranscript(), chunk, true);
+          const committed = this.commitText(chunk);
+          if (committed) {
+            this.notifyText(this.getFullTranscript(), committed, true);
           }
         }
       });
@@ -100,9 +101,9 @@ export class TranscriptionService {
         if (this.currentPartial.trim()) {
           const chunk = this.currentPartial.trim();
           this.currentPartial = '';
-          const added = this.commitText(chunk);
-          if (added) {
-            this.notifyText(this.getFullTranscript(), chunk, true);
+          const committed = this.commitText(chunk);
+          if (committed) {
+            this.notifyText(this.getFullTranscript(), committed, true);
           }
         }
 
@@ -122,11 +123,11 @@ export class TranscriptionService {
         if (!transcriptChunk) return;
 
         if (event.isFinal) {
-          // Sentença finalizada pelo Android: consolida apenas se for conteúdo novo
-          const added = this.commitText(transcriptChunk);
+          // Sentença finalizada pelo Android: consolida com pontuação natural apenas se for conteúdo novo
+          const committed = this.commitText(transcriptChunk);
           this.currentPartial = '';
-          if (added) {
-            this.notifyText(this.getFullTranscript(), transcriptChunk, true);
+          if (committed) {
+            this.notifyText(this.getFullTranscript(), committed, true);
           } else {
             this.notifyText(this.getFullTranscript(), '', false);
           }
@@ -154,9 +155,9 @@ export class TranscriptionService {
         if (this.currentPartial.trim()) {
           const chunk = this.currentPartial.trim();
           this.currentPartial = '';
-          const added = this.commitText(chunk);
-          if (added) {
-            this.notifyText(this.getFullTranscript(), chunk, true);
+          const committed = this.commitText(chunk);
+          if (committed) {
+            this.notifyText(this.getFullTranscript(), committed, true);
           }
         }
 
@@ -244,47 +245,54 @@ export class TranscriptionService {
     return `${cleanBase} ${cleanInc}`;
   }
 
-  private static commitText(chunk: string): boolean {
+  private static commitText(chunk: string): string | null {
     const clean = chunk.trim();
-    if (!clean) return false;
+    if (!clean) return null;
 
     // Normalização sem pontuação e minúsculas
     const normalize = (s: string) =>
       s.toLowerCase().replace(/[^a-z0-9áàâãéèêíïóôõöúçñ]/gi, ' ').trim().replace(/\s+/g, ' ');
     const normChunk = normalize(clean);
+    if (!normChunk) return null;
 
     // Se a frase for idêntica à última frase consolidada, ignora (evita loops de repetição em pausas)
     if (this.lastCommittedChunk && normChunk === normalize(this.lastCommittedChunk)) {
-      return false;
+      return null;
     }
 
     if (this.confirmedSegments.length === 0) {
-      this.confirmedSegments.push(clean);
+      const punctuated = SmartPunctuation.punctuateUtterance(clean, this.speechLocale);
+      this.confirmedSegments.push(punctuated);
       this.lastCommittedChunk = clean;
-      return true;
+      return punctuated;
     }
 
     const lastIdx = this.confirmedSegments.length - 1;
     const lastSegment = this.confirmedSegments[lastIdx];
 
-    // Tenta mesclagem suave se houver sobreposição entre a nova oração e o final do último segmento
-    const merged = this.mergeOverlapping(lastSegment, clean);
-    if (merged === lastSegment) {
-      // Já estava contido no final
-      return false;
+    // Remove o ponto final provisório do último segmento antes de testar sobreposição
+    // para nunca deixar um ponto perdido no meio da frase quando o Android estende a mesma fala
+    const lastWithoutEndPunct = lastSegment.replace(/[.!?]+$/, '').trim();
+    const merged = this.mergeOverlapping(lastWithoutEndPunct, clean);
+
+    if (merged === lastWithoutEndPunct) {
+      // Já estava contido no final do último segmento
+      return null;
     }
 
-    if (merged !== `${lastSegment} ${clean}`) {
-      // Houve sobreposição e fusão bem-sucedida no último segmento
-      this.confirmedSegments[lastIdx] = merged;
+    if (merged !== `${lastWithoutEndPunct} ${clean}`) {
+      // Houve sobreposição e fusão bem-sucedida: repontua o segmento mesclado limpo
+      const punctuatedMerged = SmartPunctuation.punctuateUtterance(merged, this.speechLocale);
+      this.confirmedSegments[lastIdx] = punctuatedMerged;
       this.lastCommittedChunk = clean;
-      return true;
+      return punctuatedMerged;
     }
 
-    // Caso não haja sobreposição com o último segmento, adiciona como nova oração
-    this.confirmedSegments.push(clean);
+    // Caso não haja sobreposição com o último segmento, adiciona como nova frase pontuada
+    const punctuatedNew = SmartPunctuation.punctuateUtterance(clean, this.speechLocale);
+    this.confirmedSegments.push(punctuatedNew);
     this.lastCommittedChunk = clean;
-    return true;
+    return punctuatedNew;
   }
 
   private static scheduleRestart(delayMs: number): void {
@@ -400,9 +408,9 @@ export class TranscriptionService {
 
   static appendChunk(chunk: string): void {
     if (!chunk.trim()) return;
-    this.commitText(chunk.trim());
+    const committed = this.commitText(chunk.trim());
     const full = this.getFullTranscript();
-    this.notifyText(full, chunk.trim(), true);
+    this.notifyText(full, committed || chunk.trim(), true);
   }
 
   static setTranscript(text: string): void {
@@ -422,8 +430,13 @@ export class TranscriptionService {
 
   static getFullTranscript(): string {
     const committed = this.confirmedSegments.join(' ');
-    if (this.currentPartial.trim()) {
-      return committed ? `${committed} ${this.currentPartial.trim()}` : this.currentPartial.trim();
+    const partial = this.currentPartial.trim();
+    if (partial) {
+      const startsNewSentence = !committed || /[.!?]$/.test(committed);
+      const displayPartial = startsNewSentence
+        ? partial.charAt(0).toUpperCase() + partial.slice(1)
+        : partial;
+      return committed ? `${committed} ${displayPartial}` : displayPartial;
     }
     return committed;
   }
