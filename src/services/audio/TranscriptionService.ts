@@ -1,23 +1,28 @@
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition/build/ExpoSpeechRecognitionModule';
 import { SmartPunctuation } from '../../utils/smartPunctuation';
-import { sanitizeSpeechChunk, selectBestTranscript } from '../../utils/speechSanitizer';
+import { sanitizeSpeechChunk } from '../../utils/speechSanitizer';
+import { TTSService } from './TTSService';
 
 export interface TranscriptionListener {
   onTextUpdate: (fullText: string, latestChunk: string, isFinal: boolean) => void;
   onStatusChange: (isListening: boolean) => void;
   onError: (error: string) => void;
+  onDebugStatus?: (status: string) => void;
 }
 
 /**
  * Serviço de Transcrição Contínua de Voz para Cultos de Longa Duração (1 a 4 horas).
- * Gerencia ciclo de vida do microfone, reconexão automática e acumulação estável de texto
- * com fusão inteligente de sobreposição para eliminar repetições de versículos e frases.
+ * Gerencia ciclo de vida do microfone, reconexão automática, fallback nativo Android
+ * e acumulação estável de texto com limpeza fonética e pontuação offline.
  */
 export class TranscriptionService {
   private static shouldBeListening = false;
   private static isNativeActive = false;
   private static isStarting = false;
   private static restartTimer: any = null;
+  private static consecutiveErrorCount = 0;
+  private static consecutiveSilentCycles = 0;
+  private static useContinuousNative = true;
 
   // Histórico consolidado em lista imutável de segmentos (nunca é apagado por pausas ou erros)
   private static confirmedSegments: string[] = [];
@@ -70,6 +75,14 @@ export class TranscriptionService {
         this.isNativeActive = true;
         this.isStarting = false;
         this.notifyStatus(true);
+        this.notifyDebugStatus(`🎙️ Microfone ativo (${this.speechLocale}) — pode falar`);
+      });
+
+      const subSpeechStart = ExpoSpeechRecognitionModule.addListener('speechstart', () => {
+        this.consecutiveSilentCycles = 0;
+        if (this.shouldBeListening) {
+          this.notifyDebugStatus(`🗣️ Ouvindo voz (${this.speechLocale})...`);
+        }
       });
 
       // speechend: pausa física na voz do pregador.
@@ -121,13 +134,18 @@ export class TranscriptionService {
         }
 
         const rawFallback = event.results?.[0]?.transcript?.trim() || '';
+        if (!rawFallback) return;
+
+        // Recebeu áudio válido: zera contadores de erro e silêncio
+        this.consecutiveErrorCount = 0;
+        this.consecutiveSilentCycles = 0;
+
         let transcriptChunk = rawFallback;
         try {
-          transcriptChunk = selectBestTranscript(event.results, this.speechLocale) || rawFallback;
+          transcriptChunk = sanitizeSpeechChunk(rawFallback, this.speechLocale) || rawFallback;
         } catch {
           transcriptChunk = rawFallback;
         }
-        if (!transcriptChunk) return;
 
         if (event.isFinal) {
           // Sentença finalizada pelo Android: consolida com pontuação natural apenas se for conteúdo novo
@@ -150,10 +168,15 @@ export class TranscriptionService {
         this.isNativeActive = false;
         this.isStarting = false;
 
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        const errCode = event?.error || 'unknown';
+        const errMsg = event?.message || '';
+
+        if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
           this.shouldBeListening = false;
           this.notifyStatus(false);
-          this.notifyError('Permissão para uso do microfone não foi concedida.');
+          const msg = 'Permissão de microfone ou serviço de voz bloqueado no Android.';
+          this.notifyDebugStatus(`⚠️ ${msg}`);
+          this.notifyError(msg);
           return;
         }
 
@@ -168,17 +191,46 @@ export class TranscriptionService {
           }
         }
 
+        // Se ocorrer falha técnica repetida (ex: pipe de áudio continuous no Android 13+ falhando),
+        // alterna automaticamente para modo compatível (continuous: false) mantendo o loop contínuo via JS!
+        const isTechnicalError =
+          errCode === 'audio-capture' ||
+          errCode === 'client' ||
+          errCode === 'busy' ||
+          errCode === 'unknown' ||
+          errCode === 'network' ||
+          errCode === 'language-not-supported';
+
+        if (isTechnicalError) {
+          this.consecutiveErrorCount += 1;
+          if (this.consecutiveErrorCount >= 2 && this.useContinuousNative) {
+            this.useContinuousNative = false;
+            this.notifyDebugStatus(`🔄 Alternando microfone para modo compatível (${errCode})...`);
+          } else {
+            this.notifyDebugStatus(`⚠️ Mic (${errCode})${errMsg ? `: ${errMsg}` : ''} — reconectando...`);
+          }
+        } else if (errCode === 'no-speech' || errCode === 'speech-timeout') {
+          this.consecutiveSilentCycles += 1;
+          if (this.consecutiveSilentCycles >= 2 && this.useContinuousNative) {
+            this.useContinuousNative = false;
+            this.consecutiveSilentCycles = 0;
+            this.notifyDebugStatus(`🔄 Sem áudio no modo contínuo — alternando para modo compatível...`);
+          } else {
+            this.notifyDebugStatus(`🎙️ Aguardando fala (${this.speechLocale})...`);
+          }
+        }
+
         // Se o usuário quer continuar gravando, reconecta suavemente
         if (this.shouldBeListening) {
           this.notifyStatus(true);
-          const delay = event.error === 'audio-capture' || event.error === 'client' || event.error === 'busy' ? 350 : 150;
+          const delay = isTechnicalError ? 400 : 150;
           this.scheduleRestart(delay);
         } else {
           this.notifyStatus(false);
         }
       });
 
-      this.subscriptions.push(subStart, subSpeechEnd, subEnd, subResult, subError);
+      this.subscriptions.push(subStart, subSpeechStart, subSpeechEnd, subEnd, subResult, subError);
     } catch (e: any) {
       console.warn('Erro ao registrar listeners de fala:', e);
     }
@@ -252,8 +304,24 @@ export class TranscriptionService {
     return `${cleanBase} ${cleanInc}`;
   }
 
+  private static safePunctuate(text: string): string {
+    try {
+      return SmartPunctuation.punctuateUtterance(text, this.speechLocale) || text;
+    } catch {
+      return text;
+    }
+  }
+
   private static commitText(chunk: string): string | null {
-    const clean = sanitizeSpeechChunk(chunk, this.speechLocale);
+    const rawTrimmed = (chunk || '').trim();
+    if (!rawTrimmed) return null;
+
+    let clean = rawTrimmed;
+    try {
+      clean = sanitizeSpeechChunk(rawTrimmed, this.speechLocale) || rawTrimmed;
+    } catch {
+      clean = rawTrimmed;
+    }
     if (!clean) return null;
 
     // Normalização sem pontuação e minúsculas
@@ -268,7 +336,7 @@ export class TranscriptionService {
     }
 
     if (this.confirmedSegments.length === 0) {
-      const punctuated = SmartPunctuation.punctuateUtterance(clean, this.speechLocale);
+      const punctuated = this.safePunctuate(clean);
       this.confirmedSegments.push(punctuated);
       this.lastCommittedChunk = clean;
       return punctuated;
@@ -289,14 +357,14 @@ export class TranscriptionService {
 
     if (merged !== `${lastWithoutEndPunct} ${clean}`) {
       // Houve sobreposição e fusão bem-sucedida: repontua o segmento mesclado limpo
-      const punctuatedMerged = SmartPunctuation.punctuateUtterance(merged, this.speechLocale);
+      const punctuatedMerged = this.safePunctuate(merged);
       this.confirmedSegments[lastIdx] = punctuatedMerged;
       this.lastCommittedChunk = clean;
       return punctuatedMerged;
     }
 
     // Caso não haja sobreposição com o último segmento, adiciona como nova frase pontuada
-    const punctuatedNew = SmartPunctuation.punctuateUtterance(clean, this.speechLocale);
+    const punctuatedNew = this.safePunctuate(clean);
     this.confirmedSegments.push(punctuatedNew);
     this.lastCommittedChunk = clean;
     return punctuatedNew;
@@ -328,19 +396,19 @@ export class TranscriptionService {
     this.isStarting = true;
 
     try {
-      // NÃO passar androidIntentOptions com extras de API 33+ (ex: EXTRA_ENABLE_FORMATTING,
-      // EXTRA_MASK_OFFENSIVE_WORDS) ou EXTRA_SPEECH_INPUT_* pois conflitam com continuous: true
-      // e lançam NoSuchFieldException via reflection no ExpoSpeechService.kt em Android <= 12.
+      // Parâmetros nativos idênticos aos testados e comprovados em todas as versões do Android
+      // com fallback automático para continuous: false caso o pipe de áudio do Android 13+ falhe.
       await ExpoSpeechRecognitionModule.start({
         lang: this.speechLocale || 'pt-BR',
         interimResults: true,
-        continuous: true,
-        maxAlternatives: 5,
+        continuous: this.useContinuousNative,
+        maxAlternatives: 1,
         addsPunctuation: true
       });
       this.isNativeActive = true;
-    } catch (err) {
+    } catch (err: any) {
       this.isNativeActive = false;
+      this.notifyDebugStatus(`⚠️ Falha ao abrir microfone: ${err?.message || 'erro desconhecido'}`);
       if (this.shouldBeListening) {
         this.scheduleRestart(400);
       }
@@ -366,6 +434,18 @@ export class TranscriptionService {
   static async start(initialText: string = ''): Promise<void> {
     this.setupEvents();
 
+    // Limpa qualquer estado anterior preso e encerra eventual TTS para liberar foco de áudio do microfone
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    this.isNativeActive = false;
+    this.isStarting = false;
+    this.consecutiveErrorCount = 0;
+    this.consecutiveSilentCycles = 0;
+    this.useContinuousNative = true;
+    await TTSService.stop().catch(() => {});
+
     if (initialText && initialText.trim()) {
       if (this.confirmedSegments.length === 0) {
         this.confirmedSegments = [initialText.trim()];
@@ -374,19 +454,38 @@ export class TranscriptionService {
     this.currentPartial = '';
     this.shouldBeListening = true;
     this.notifyStatus(true);
+    this.notifyDebugStatus('🎙️ Iniciando microfone...');
 
     try {
       const perms = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!perms.granted) {
         this.shouldBeListening = false;
         this.notifyStatus(false);
-        this.notifyError('Permissão para uso do microfone não foi concedida. Ative nas configurações do celular.');
+        const msg = 'Permissão para uso do microfone não foi concedida. Ative nas configurações do celular.';
+        this.notifyDebugStatus(`⚠️ ${msg}`);
+        this.notifyError(msg);
         return;
       }
 
+      try {
+        if (typeof ExpoSpeechRecognitionModule.isRecognitionAvailable === 'function') {
+          const available = ExpoSpeechRecognitionModule.isRecognitionAvailable();
+          if (!available) {
+            this.shouldBeListening = false;
+            this.notifyStatus(false);
+            const msg = 'Serviço de reconhecimento de voz do Android indisponível neste aparelho.';
+            this.notifyDebugStatus(`⚠️ ${msg}`);
+            this.notifyError(msg);
+            return;
+          }
+        }
+      } catch {}
+
       await this.startNativeRecognition();
     } catch (err: any) {
-      this.notifyError(err?.message || 'Não foi possível iniciar o microfone no celular.');
+      const msg = err?.message || 'Não foi possível iniciar o microfone no celular.';
+      this.notifyDebugStatus(`⚠️ ${msg}`);
+      this.notifyError(msg);
       this.shouldBeListening = false;
       this.isNativeActive = false;
       this.notifyStatus(false);
@@ -465,5 +564,9 @@ export class TranscriptionService {
 
   private static notifyError(error: string): void {
     this.listeners.forEach(l => l.onError(error));
+  }
+
+  private static notifyDebugStatus(status: string): void {
+    this.listeners.forEach(l => l.onDebugStatus?.(status));
   }
 }

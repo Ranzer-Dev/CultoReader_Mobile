@@ -195,11 +195,20 @@ export function useLiveSession({
       onStatusChange: (status) => {
         setIsListening(status);
         if (status) {
-          setSaveStatusMessage('Gravando...');
+          setSaveStatusMessage('🎙️ Gravando...');
+        }
+      },
+      onDebugStatus: (statusMsg) => {
+        if (statusMsg) {
+          setSaveStatusMessage(statusMsg);
         }
       },
       onError: (err) => {
         console.warn('Aviso de Transcrição:', err);
+        if (err) {
+          setSaveStatusMessage(`⚠️ ${err}`);
+          Alert.alert('Microfone', err);
+        }
       }
     });
 

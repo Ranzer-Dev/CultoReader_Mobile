@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition/build/ExpoSpeechRecognitionModule';
 import { SmartPunctuation } from '../utils/smartPunctuation';
-import { selectBestTranscript } from '../utils/speechSanitizer';
+import { sanitizeSpeechChunk } from '../utils/speechSanitizer';
+import { TTSService } from '../services/audio/TTSService';
 
 interface UseVoiceDictationProps {
   onTextAppend: (chunk: string) => void;
@@ -19,17 +20,18 @@ export function useVoiceDictation({ onTextAppend, lang = 'pt-BR' }: UseVoiceDict
   useEffect(() => {
     const subResult = ExpoSpeechRecognitionModule.addListener('result', (event) => {
       const rawFallback = event.results?.[0]?.transcript?.trim() || '';
+      if (!rawFallback || !event.isFinal) return;
       let chunk = rawFallback;
       try {
-        chunk = selectBestTranscript(event.results, langRef.current) || rawFallback;
+        chunk = sanitizeSpeechChunk(rawFallback, langRef.current) || rawFallback;
       } catch {
         chunk = rawFallback;
       }
-      if (chunk && event.isFinal) {
-        const punctuated = SmartPunctuation.punctuateUtterance(chunk, langRef.current);
-        if (punctuated) {
-          onTextAppendRef.current(punctuated);
-        }
+      try {
+        const punctuated = SmartPunctuation.punctuateUtterance(chunk, langRef.current) || chunk;
+        onTextAppendRef.current(punctuated);
+      } catch {
+        onTextAppendRef.current(chunk);
       }
     });
 
@@ -57,6 +59,7 @@ export function useVoiceDictation({ onTextAppend, lang = 'pt-BR' }: UseVoiceDict
       setIsDictating(false);
     } else {
       try {
+        await TTSService.stop().catch(() => {});
         const perms = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
         if (!perms.granted) {
           Alert.alert('Permissão', 'Permita o acesso ao microfone nas configurações para usar o ditado por voz.');
@@ -68,7 +71,7 @@ export function useVoiceDictation({ onTextAppend, lang = 'pt-BR' }: UseVoiceDict
           lang: activeLocale,
           interimResults: true,
           continuous: true,
-          maxAlternatives: 5,
+          maxAlternatives: 1,
           addsPunctuation: true
         });
       } catch (err: any) {
