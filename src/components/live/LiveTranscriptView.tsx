@@ -98,7 +98,13 @@ export const LiveTranscriptView = React.memo(function LiveTranscriptView({
               }
 
               // Segmento normal de texto: renderizado com Text inline de alto desempenho (evita milhares de nós de toque nativos)
-              const words = segment.content.split(' ');
+              // Remove ponto/vírgula órfão solto no início de um segmento imediatamente após uma pill de versículo
+              const prevWasVerse = segIdx > 0 && segments[segIdx - 1]?.type === 'verse';
+              const cleanedContent = prevWasVerse
+                ? segment.content.replace(/^\s*[.,;:]+\s*/, ' ').trim()
+                : segment.content;
+              if (!cleanedContent) return null;
+              const words = cleanedContent.split(' ');
               return (
                 <Text key={`seg-${segIdx}`} style={[styles.transcriptWord, { color: colors.text, fontSize: scaledFontSize(17) }]}>
                   {words.map((word, wIdx) => {

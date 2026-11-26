@@ -516,26 +516,48 @@ export class BibleReferenceDetector {
       // Padrão 7: Conversacional de Púlpito com pausas, hesitações e palavras intercaladas
       // Ex.: "Livro Salmos é qual era mesmo o capitulo? a lembrei era 3, versiculo 4"
       // "No livro de Salmos... o capítulo é 37 e o versículo vai do 16 ao 20"
+      // IMPORTANTE: Nunca atravessa outro livro bíblico nem sentenças completamente diferentes!
       const convBookRegex = new RegExp(
         `(?:^|[\\s.,;!?])(?:(?:no|do|da|em|o|a|in|on|the)\\s+)?(?:(?:livro|book)\\s+(?:de|of\\s+)?)?(${booksPattern})(?:$|[\\s.,;!?])`,
         'gi'
       );
+      const nextBookBoundaryRegex = new RegExp(`(?:^|[\\s.,;!?])(${booksPattern})(?:$|[\\s.,;!?])`, 'i');
+      // Quebra de frase comum: ponto/exclamação/interrogação NÃO seguido de continuação de citação bíblica
+      const sentenceBreakRegex = /[.!?]+\s+(?!(?:a\s+|ah\s+|é\s+|e\s+)?(?:lembrei|cap[ií]tulo|cap\.?|vers[ií]culos?|versos?|vers?\.?|vv?\.?|qual\s+(?:era|e|é)|remembered|chapter|verses?|ch\.?)\b)/i;
       let bookMatch: RegExpExecArray | null;
 
       while ((bookMatch = convBookRegex.exec(targetText)) !== null) {
         const rawBook = bookMatch[1];
         const canonicalBook = BIBLE_BOOKS[normalizeString(rawBook)] || rawBook;
         const startIndex = bookMatch.index;
+        const afterBookPos = startIndex + bookMatch[0].length;
 
-        // Janela conversacional de até 220 caracteres após o livro
-        const restOfText = targetText.substring(startIndex + bookMatch[0].length, startIndex + bookMatch[0].length + 220);
+        // Janela conversacional de até 140 caracteres após o livro, recortada antes de outro livro ou nova frase
+        let restOfText = targetText.substring(afterBookPos, afterBookPos + 140);
+
+        // 1. Nunca atravessa outro livro bíblico (evita unir "Salmos 3 ... Números versículo 5")
+        const nextBookMatch = nextBookBoundaryRegex.exec(restOfText);
+        if (nextBookMatch && nextBookMatch.index > 0) {
+          restOfText = restOfText.substring(0, nextBookMatch.index);
+        }
+
+        // 2. Nunca atravessa pontuação final de outra sentença comum (ex: "Salmos 3. É você pode me ouvir...")
+        const sentBreakInRest = sentenceBreakRegex.exec(restOfText);
+        if (sentBreakInRest) {
+          restOfText = restOfText.substring(0, sentBreakInRest.index);
+        }
 
         const chapterPattern = /(?:(?:qual\s+(?:era|e|é)\s+(?:mesmo\s+)?(?:o\s+)?cap[ií]tulo[?.,;!\s]*|what\s+was\s+(?:the\s+)?chapter[?.,;!\s]*|lembrei\s+(?:era|foi|e|é)\s*|remembered\s+it\s+was\s*|(?:cap[ií]tulo|chapter|cap|ch)\s*(?:e|é|is|was)?\s*|^))(?:\s*(?:de|do|no|o|a|e|é|of|the|in|is|was)\s*)*(\d{1,3})/i;
         const chapMatch = chapterPattern.exec(restOfText);
 
         if (chapMatch) {
           const chapter = parseInt(chapMatch[1], 10);
-          const afterChap = restOfText.substring(chapMatch.index + chapMatch[0].length);
+          let afterChap = restOfText.substring(chapMatch.index + chapMatch[0].length, chapMatch.index + chapMatch[0].length + 60);
+
+          const sentBreakAfterChap = sentenceBreakRegex.exec(afterChap);
+          if (sentBreakAfterChap) {
+            afterChap = afterChap.substring(0, sentBreakAfterChap.index);
+          }
 
           const versePattern = /(?:(?:vers[ií]culos?|verses?|versos?|vers?\.?|vv?\.?|vai\s+do|do|no|from)\s+)(\d{1,3})(?:\s*(?:ao|a|ate|até|-|e|to|through|and)\s*(?:(?:o|a|the)\s+)?(?:vers[ií]culos?|verses?|versos?|vers?\.?)?\s*(\d{1,3}))?/i;
           const verseMatch = versePattern.exec(afterChap);
@@ -543,10 +565,12 @@ export class BibleReferenceDetector {
           if (verseMatch) {
             const verseStart = parseInt(verseMatch[1], 10);
             const verseEnd = verseMatch[2] ? parseInt(verseMatch[2], 10) : undefined;
-            const matchEndIndex = startIndex + bookMatch[0].length + chapMatch.index + chapMatch[0].length + verseMatch.index + verseMatch[0].length;
-            const fullRawMatch = targetText.substring(startIndex, matchEndIndex);
+            const matchEndIndex = afterBookPos + chapMatch.index + chapMatch[0].length + verseMatch.index + verseMatch[0].length;
+            const fullRawMatch = targetText.substring(startIndex, matchEndIndex).trim();
 
-            await extractMatch(canonicalBook, chapter, verseStart, verseEnd, fullRawMatch, false);
+            if (fullRawMatch.length <= 75) {
+              await extractMatch(canonicalBook, chapter, verseStart, verseEnd, fullRawMatch, false);
+            }
           }
         }
       }
@@ -637,7 +661,10 @@ export function reconcileDetectedVerses(
     const numTranscript = normalizeSpokenNumbers(normTranscript);
 
     all = all.filter(v => {
-      // Se já existia previamente, preserva com segurança total
+      const chapStr = String(v.chapter);
+      const chapRegex = new RegExp(`(?:^|\\D)${chapStr}(?:$|\\D)`);
+      const chapterPresentInFullText = chapRegex.test(normTranscript) || chapRegex.test(numTranscript);
+
       const wasExisting = existing.some(
         ex =>
           ex.book.toLowerCase() === v.book.toLowerCase() &&
@@ -645,10 +672,18 @@ export function reconcileDetectedVerses(
           ex.verse_start === v.verse_start &&
           ex.verse_end === v.verse_end
       );
-      if (wasExisting) return true;
 
-      const chapStr = String(v.chapter);
-      return normTranscript.includes(chapStr) || numTranscript.includes(chapStr);
+      // Versículos já confirmados permanecem protegidos, EXCETO capítulos isolados fantasmas
+      // criados por parciais corrigidos pelo Android (ex: "Salmos 34" -> "Salmos 3") cujo número
+      // deixou de existir em todo o histórico da transcrição.
+      if (wasExisting) {
+        if (v.is_chapter_only && !chapterPresentInFullText) {
+          return false;
+        }
+        return true;
+      }
+
+      return chapterPresentInFullText;
     });
   }
 

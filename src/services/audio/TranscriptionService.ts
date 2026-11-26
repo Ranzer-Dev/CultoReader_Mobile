@@ -541,6 +541,15 @@ export class TranscriptionService {
     const committed = this.confirmedSegments.join(' ');
     const partial = this.currentPartial.trim();
     if (partial) {
+      if (committed) {
+        // Mescla visualmente contra o final já consolidado para evitar repetição temporária
+        // quando speechend consolida uma frase incompleta e o Android estende a mesma oração
+        const committedWithoutEndPunct = committed.replace(/[.!?]+$/, '').trim();
+        const merged = this.mergeOverlapping(committedWithoutEndPunct, partial);
+        if (merged !== `${committedWithoutEndPunct} ${partial}`) {
+          return merged;
+        }
+      }
       const startsNewSentence = !committed || /[.!?]$/.test(committed);
       const displayPartial = startsNewSentence
         ? partial.charAt(0).toUpperCase() + partial.slice(1)

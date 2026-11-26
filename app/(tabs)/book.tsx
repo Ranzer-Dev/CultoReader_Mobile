@@ -568,7 +568,7 @@ export default function BookModeScreen() {
               {
                 backgroundColor: colors.thumbZoneBackground,
                 borderTopColor: colors.border,
-                paddingBottom: insets.bottom + 10
+                paddingBottom: Math.max(insets.bottom, 6) + 8
               }
             ]}
           >
@@ -583,22 +583,34 @@ export default function BookModeScreen() {
               accessibilityLabel={t.bookTab.prevPage}
               accessibilityRole="button"
             >
-              <ChevronLeft size={scaledFontSize(20)} color={currentIndex === 0 ? colors.textMuted : colors.text} />
+              <ChevronLeft size={scaledFontSize(18)} color={currentIndex === 0 ? colors.textMuted : colors.text} />
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
                 style={[
                   styles.turnButtonText,
-                  { color: currentIndex === 0 ? colors.textMuted : colors.text, fontSize: scaledFontSize(14) }
+                  { color: currentIndex === 0 ? colors.textMuted : colors.text, fontSize: scaledFontSize(13) }
                 ]}
               >
-                {t.bookTab.prevPage}
+                {t.common.previous}
               </Text>
             </TouchableOpacity>
 
-            <View style={[styles.pageBadge, { backgroundColor: colors.surface }]}>
-              <Text style={[styles.pageBadgeText, { color: colors.text, fontSize: scaledFontSize(13) }]}>
-                {t.bookTab.pageOf
-                  .replace('{current}', String(currentIndex + 1))
-                  .replace('{total}', String(localizedCultos.length))}
+            <View
+              style={[
+                styles.pageBadge,
+                { backgroundColor: colors.surface, borderColor: colors.border }
+              ]}
+              accessibilityLabel={t.bookTab.pageOf
+                .replace('{current}', String(currentIndex + 1))
+                .replace('{total}', String(localizedCultos.length))}
+            >
+              <Text
+                numberOfLines={1}
+                style={[styles.pageBadgeText, { color: colors.text, fontSize: scaledFontSize(13) }]}
+              >
+                {currentIndex + 1} / {localizedCultos.length}
               </Text>
             </View>
 
@@ -614,18 +626,21 @@ export default function BookModeScreen() {
               accessibilityRole="button"
             >
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
                 style={[
                   styles.turnButtonText,
                   {
                     color: currentIndex >= localizedCultos.length - 1 ? colors.textMuted : colors.text,
-                    fontSize: scaledFontSize(14)
+                    fontSize: scaledFontSize(13)
                   }
                 ]}
               >
-                {t.bookTab.nextPage}
+                {t.common.next}
               </Text>
               <ChevronRight
-                size={scaledFontSize(20)}
+                size={scaledFontSize(18)}
                 color={currentIndex >= localizedCultos.length - 1 ? colors.textMuted : colors.text}
               />
             </TouchableOpacity>
@@ -795,15 +810,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 12,
-    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingHorizontal: 14,
+    gap: 10,
     borderTopWidth: 1
   },
   pageTurnButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    justifyContent: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 10,
     borderRadius: 12,
     borderWidth: 1,
     gap: 4
@@ -812,15 +830,19 @@ const styles = StyleSheet.create({
     opacity: 0.4
   },
   turnButtonText: {
-    fontWeight: '600'
+    fontWeight: '700'
   },
   pageBadge: {
-    paddingVertical: 6,
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 11,
     paddingHorizontal: 12,
-    borderRadius: 10
+    borderRadius: 12,
+    borderWidth: 1
   },
   pageBadgeText: {
-    fontWeight: '600'
+    fontWeight: '700'
   },
   centerLoading: {
     flex: 1,

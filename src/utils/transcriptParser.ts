@@ -68,7 +68,10 @@ export function parseTranscriptSegments(text: string, verses: DetectedVerse[]): 
   for (const v of verses) {
     const bookAliases = getBookMultilingualAliases(v.book);
     const candidates: string[] = [];
-    if (v.raw_match) candidates.push(v.raw_match);
+    // Só aceita raw_match literal se for uma citação concisa (nunca um bloco que atravessou frases)
+    if (v.raw_match && v.raw_match.trim().length <= 75 && !/[.!?]\s+[A-ZÀ-Ö]/.test(v.raw_match)) {
+      candidates.push(v.raw_match.trim());
+    }
 
     for (const bName of bookAliases) {
       try {

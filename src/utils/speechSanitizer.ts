@@ -175,8 +175,9 @@ export function sanitizeSpeechChunk(text: string, locale: string = 'pt-BR'): str
   const lang = (locale || 'pt').split('-')[0].toLowerCase();
 
   if (lang === 'pt' || lang === 'ts') {
-    // 3. Correção de "versículo" / "capítulo" quebrados pelo STT offline
+    // 3. Correção de "versículo" / "capítulo" quebrados e expressões bíblicas comuns pelo STT offline
     cleaned = cleaned
+      .replace(/\b(?:a|o)\s+senhora\s+([eé]\s+(?:o\s+)?meu\s+pastor)\b/gi, 'O Senhor $1')
       .replace(/\bver\s+c[ií]rculos?\b/gi, (m) => (/s$/i.test(m) ? 'versículos' : 'versículo'))
       .replace(/\bver\s+s[eé]culos?\b/gi, (m) => (/s$/i.test(m) ? 'versículos' : 'versículo'))
       .replace(/\bvers[ií]culo\s+s\b/gi, 'versículos')
