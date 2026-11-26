@@ -2,7 +2,7 @@
   "expo": {
     "name": "Culto Reader & Compreensão",
     "slug": "leitura-compreensao-culto",
-    "version": "1.0.29",
+    "version": "1.0.30",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -20,7 +20,7 @@
     },
     "android": {
       "package": "com.cultoreader.app",
-      "versionCode": 30,
+      "versionCode": 31,
       "adaptiveIcon": {
         "backgroundColor": "#1E1E2E"
       },

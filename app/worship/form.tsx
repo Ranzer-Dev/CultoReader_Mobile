@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -17,10 +17,14 @@ export default function WorshipFormScreen() {
   const { colors, scaledFontSize } = useAccessibility();
   const { t, languageInfo } = useLanguage();
 
+  const handleSuccess = useCallback(() => {
+    router.back();
+  }, [router]);
+
   // 1. Hook de dados do formulário
   const form = useWorshipForm({
     id: params.id,
-    onSuccess: () => router.back()
+    onSuccess: handleSuccess
   });
 
   // 2. Hook de ditado por voz (desacoplado do componente nativo)

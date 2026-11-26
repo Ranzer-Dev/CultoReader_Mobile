@@ -53,7 +53,12 @@ export const pt: TranslationSchema = {
     chapterNotes: 'Anotações deste Capítulo ({count})',
     prevPage: 'Pág. Anterior',
     nextPage: 'Próxima Pág.',
-    translatingContent: 'Traduzindo conteúdo offline...'
+    translatingContent: 'Traduzindo conteúdo offline...',
+    citedVersesTitle: 'Versículos Citados ({count})',
+    citedBooksLabel: 'Livros citados:',
+    tapToReadFull: 'Ler culto completo',
+    listenVerse: 'Ouvir Versículo',
+    citedReferenceFallback: 'Referência bíblica citada pelo pregador.'
   },
   bible: {
     version: 'Versão',

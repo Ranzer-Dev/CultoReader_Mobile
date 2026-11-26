@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'rea
 import { BookOpen, X, Volume2 } from 'lucide-react-native';
 import { DetectedVerse } from '../../types';
 import { ThemeColors } from '../../theme/tokens';
+import { useLanguage } from '../../i18n';
 
 interface VerseDetailModalProps {
   verse: DetectedVerse | null;
@@ -19,6 +20,7 @@ export function VerseDetailModal({
   colors,
   scaledFontSize
 }: VerseDetailModalProps) {
+  const { t } = useLanguage();
   if (!verse) return null;
 
   return (
@@ -36,7 +38,7 @@ export function VerseDetailModal({
             <TouchableOpacity
               onPress={onClose}
               style={[styles.modalCloseButton, { backgroundColor: colors.surfaceElevated }]}
-              accessibilityLabel="Fechar versículo"
+              accessibilityLabel={t.common.close}
             >
               <X size={scaledFontSize(18)} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -49,7 +51,7 @@ export function VerseDetailModal({
               </Text>
             ) : (
               <Text style={[styles.modalVerseTextEmpty, { color: colors.textMuted, fontSize: scaledFontSize(14) }]}>
-                Referência bíblica citada pelo pregador.
+                {t.bookTab.citedReferenceFallback}
               </Text>
             )}
           </ScrollView>
@@ -58,21 +60,21 @@ export function VerseDetailModal({
             <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: colors.primary }]}
               onPress={() => onReadAloud(verse)}
-              accessibilityLabel="Ouvir versículo"
+              accessibilityLabel={t.bookTab.listenVerse}
             >
               <Volume2 size={scaledFontSize(16)} color="#FFFFFF" />
               <Text style={[styles.modalButtonText, { color: '#FFFFFF', fontSize: scaledFontSize(13) }]}>
-                Ouvir Versículo
+                {t.bookTab.listenVerse}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: colors.surfaceElevated }]}
               onPress={onClose}
-              accessibilityLabel="Continuar acompanhando o culto"
+              accessibilityLabel={t.common.close}
             >
               <Text style={[styles.modalButtonText, { color: colors.text, fontSize: scaledFontSize(13) }]}>
-                Fechar
+                {t.common.close}
               </Text>
             </TouchableOpacity>
           </View>

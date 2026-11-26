@@ -71,6 +71,11 @@ export interface TranslationSchema {
     prevPage: string;
     nextPage: string;
     translatingContent: string;
+    citedVersesTitle: string; // "Versículos Citados ({count})"
+    citedBooksLabel: string; // "Livros citados:"
+    tapToReadFull: string; // "Ler culto completo"
+    listenVerse: string; // "Ouvir Versículo"
+    citedReferenceFallback: string; // "Referência bíblica citada pelo pregador."
   };
   bible: {
     version: string;

@@ -55,8 +55,9 @@ export function parseTranscriptSegments(text: string, verses: DetectedVerse[]): 
     return [{ type: 'text', content: text }];
   }
 
-  // Cache O(1) para evitar re-parsear strings idênticas
-  const cacheKey = `${text.length}_${verses.length}_${verses[verses.length - 1]?.book || ''}_${verses[verses.length - 1]?.chapter || ''}_${text.slice(-50)}`;
+  // Cache O(1) livre de colisões para evitar re-parsear strings idênticas
+  const verseSig = verses.map(v => `${v.book}:${v.chapter}:${v.verse_start}-${v.verse_end || ''}`).join('|');
+  const cacheKey = `${text.length}_${text.slice(0, 40)}_${text.slice(-40)}_${verseSig}`;
   if (segmentsCache.has(cacheKey)) {
     return segmentsCache.get(cacheKey)!;
   }

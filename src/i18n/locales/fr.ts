@@ -53,7 +53,12 @@ export const fr: TranslationSchema = {
     chapterNotes: 'Notes de ce Chapitre ({count})',
     prevPage: 'Page Préc.',
     nextPage: 'Page Suiv.',
-    translatingContent: 'Traduction hors ligne en cours...'
+    translatingContent: 'Traduction hors ligne en cours...',
+    citedVersesTitle: 'Versets Cités ({count})',
+    citedBooksLabel: 'Livres cités :',
+    tapToReadFull: 'Lire le message complet',
+    listenVerse: 'Écouter le Verset',
+    citedReferenceFallback: 'Référence biblique citée par le prédicateur.'
   },
   bible: {
     version: 'Version',

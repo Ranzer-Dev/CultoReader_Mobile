@@ -53,7 +53,12 @@ export const ts: TranslationSchema = {
     chapterNotes: 'Timhaka ta Kavanyisa loku ({count})',
     prevPage: 'Tluka Nzhaku',
     nextPage: 'Tluka Mahlweni',
-    translatingContent: 'Kha ku hundzuluxiwa...'
+    translatingContent: 'Kha ku hundzuluxiwa...',
+    citedVersesTitle: 'Tindzimana leti boxiweke ({count})',
+    citedBooksLabel: 'Tibuku leti boxiweke:',
+    tapToReadFull: 'Hlaya rito hinkwaro',
+    listenVerse: 'Yingisela Ndzimana',
+    citedReferenceFallback: 'Ndzimana ya Bhibhiliya leyi boxiweke.'
   },
   bible: {
     version: 'Nkandziyiso',

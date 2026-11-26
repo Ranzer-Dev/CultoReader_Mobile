@@ -53,7 +53,12 @@ export const es: TranslationSchema = {
     chapterNotes: 'Notas de este Capítulo ({count})',
     prevPage: 'Pág. Anterior',
     nextPage: 'Pág. Siguiente',
-    translatingContent: 'Traduciendo contenido sin conexión...'
+    translatingContent: 'Traduciendo contenido sin conexión...',
+    citedVersesTitle: 'Versículos Citados ({count})',
+    citedBooksLabel: 'Libros citados:',
+    tapToReadFull: 'Leer mensaje completo',
+    listenVerse: 'Escuchar Versículo',
+    citedReferenceFallback: 'Referencia bíblica citada por el predicador.'
   },
   bible: {
     version: 'Versión',

@@ -53,7 +53,12 @@ export const sw: TranslationSchema = {
     chapterNotes: 'Madokezo ya Sura hii ({count})',
     prevPage: 'Ukurasa Nyuma',
     nextPage: 'Ukurasa Mbele',
-    translatingContent: 'Inatafsiri maudhui bila mtandao...'
+    translatingContent: 'Inatafsiri maudhui bila mtandao...',
+    citedVersesTitle: 'Mistari Iliyotajwa ({count})',
+    citedBooksLabel: 'Vitabu vilivyotajwa:',
+    tapToReadFull: 'Soma mahubiri kamili',
+    listenVerse: 'Sikiliza Mstari',
+    citedReferenceFallback: 'Rejeleo la Biblia lililotajwa na mhubiri.'
   },
   bible: {
     version: 'Toleo',

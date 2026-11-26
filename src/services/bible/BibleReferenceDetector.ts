@@ -1,6 +1,7 @@
 import { DetectedVerse } from '../../types';
 import { BibleRepository } from '../../database/repositories/BibleRepository';
 import { BibleManager } from './BibleManager';
+import { sanitizeSpeechChunk } from '../../utils/speechSanitizer';
 
 export type VerseLookupFunction = (
   book: string,
@@ -65,7 +66,7 @@ const BIBLE_BOOKS: Record<string, string> = {
   'marcos': 'Marcos', 'mc': 'Marcos',
   'lucas': 'Lucas', 'lc': 'Lucas',
   'joao': 'João', 'joão': 'João',
-  'atos': 'Atos', 'at': 'Atos',
+  'atos': 'Atos', 'atos dos apostolos': 'Atos', 'atos dos apóstolos': 'Atos', 'at': 'Atos',
   // Epístolas Paulinas & Gerais
   'romanos': 'Romanos', 'rm': 'Romanos',
   '1 corintios': '1 Coríntios', '1 coríntios': '1 Coríntios', 'primeiro corintios': '1 Coríntios', '1co': '1 Coríntios',
@@ -200,13 +201,29 @@ function numPattern(n: number): string {
   return '(?:' + (NUMBER_REGEX_MAP[n] || String(n)) + ')';
 }
 
+function accentInsensitiveBookPattern(book: string): string {
+  const norm = book.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const escaped = norm.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+  return escaped
+    .replace(/a/g, '[aáàâãä]')
+    .replace(/e/g, '[eéèêë]')
+    .replace(/i/g, '[iíìîï]')
+    .replace(/o/g, '[oóòôõö]')
+    .replace(/u/g, '[uúùûü]')
+    .replace(/c/g, '[cç]')
+    .replace(/n/g, '[nñ]')
+    .replace(/\s+/g, '\\s+');
+}
+
 /**
  * Cria expressão regular flexível para encontrar no texto qualquer citação ao versículo,
- * suportando números em dígitos ou por extenso, pontuações e expressões de púlpito.
+ * suportando acentos multilíngues, números em dígitos ou por extenso, pontuações e expressões de púlpito.
  */
 export function buildVerseRegex(book: string, chapter: number, verseStart?: number, verseEnd?: number): RegExp {
-  const normBook = book.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const prefix = '(?:(?:no|do|da|em|o|a)\\s+)?(?:livro\\s+(?:de\\s+)?)?';
+  const normBook = accentInsensitiveBookPattern(book);
+  const prefix = '(?:(?:no|do|da|em|o|a|in|on|the|en|dans)\\s+)?(?:(?:livro|book|libro|livre)\\s+(?:(?:de|of|du)\\s+)?)?';
+  const capWord = '(?:(?:no|do|em|in|en|dans)\\s+)?(?:cap[ií]tulo|chapter|chapitre|sura|kavanyisa|cap\\.?|ch\\.?|c\\.?\\s*)';
+  const verWord = '(?:vers[ií]culos?|verses?|versets?|versos?|mistari|mstari|ndzimana|vers?\\.?|vv?\\.?)';
   const cPat = numPattern(chapter);
   const v1Pat = verseStart ? numPattern(verseStart) : null;
   const v2Pat = verseEnd ? numPattern(verseEnd) : null;
@@ -215,38 +232,38 @@ export function buildVerseRegex(book: string, chapter: number, verseStart?: numb
 
   if (v1Pat) {
     const rangeEnd = v2Pat
-      ? '(?:\\s*(?:ao|a|e|ate|até|-)\\s*(?:(?:o|a)\\s+)?(?:vers[ií]culos?|versos?|vers?\\.?|vv?\\.?)?\\s*' + v2Pat + ')'
+      ? '(?:\\s*(?:ao|a|e|ate|até|al|to|through|-)\\s*(?:(?:o|a|the)\\s+)?(?:' + verWord + ')?\\s*' + v2Pat + ')'
       : '';
     const optRangeEnd = v2Pat ? rangeEnd + '?' : '';
 
     // 1. "Salmos 3:4" ou "Salmos 3:4-8" ou "Salmos 3:4 ao 8"
     patterns.push(normBook + '[,;]?\\s+' + cPat + '[:\\s]+' + v1Pat + (v2Pat ? rangeEnd : ''));
 
-    // 2. "Salmos capítulo 3 versículo 4" / "Livro de Salmos capítulo 4 do versículo 8 ao versículo 9"
+    // 2. "Salmos capítulo 3 versículo 4" / "Isaías no capítulo 40 versículo 31" / "Livro de Salmos capítulo 4 do versículo 8 ao 9"
     patterns.push(
-      prefix + normBook + '[,;]?\\s*(?:cap[ií]tulo|cap\\.?|c\\.?\\s*)?\\s*' + cPat +
-      '[,;]?\\s*(?:(?:no|do|da|nos|nas|o|a)\\s+)?(?:vers[ií]culos?|versos?|vers?\\.?|vv?\\.?)\\s*' + v1Pat + optRangeEnd
+      prefix + normBook + '[,;]?\\s*(?:' + capWord + ')?\\s*' + cPat +
+      '[,;]?\\s*(?:(?:no|do|da|nos|nas|o|a|del|of)\\s+)?' + verWord + '\\s*' + v1Pat + optRangeEnd
     );
 
     // 3. "salmos 30 do 2 ao 4" / "salmos 30 de 2 a 4"
     if (v2Pat) {
       patterns.push(
-        prefix + normBook + '[,;]?\\s*(?:cap[ií]tulo|cap\\.?|c\\.?\\s*)?\\s*' + cPat +
-        '\\s+(?:do|da|de|no|na)\\s+' + v1Pat + '\\s*(?:ao|a|ate|até|-)\\s*(?:(?:o|a)\\s+)?' + v2Pat
+        prefix + normBook + '[,;]?\\s*(?:' + capWord + ')?\\s*' + cPat +
+        '\\s+(?:do|da|de|no|na|del|from)\\s+' + v1Pat + '\\s*(?:ao|a|ate|até|al|to|-)\\s*(?:(?:o|a|the)\\s+)?' + v2Pat
       );
     }
 
     // 4. "salmos versículo 2 no capítulo 3"
     patterns.push(
-      prefix + normBook + '[,;]?\\s*(?:(?:no|do|da|nos|nas|o|a)\\s+)?(?:vers[ií]culos?|versos?|vers?\\.?|vv?\\.?)\\s*' +
-      v1Pat + optRangeEnd + '\\s+(?:no|do|da|em|de)?\\s*(?:cap[ií]tulo|cap\\.?|c\\.?\\s*)\\s*' + cPat
+      prefix + normBook + '[,;]?\\s*(?:(?:no|do|da|nos|nas|o|a)\\s+)?' + verWord + '\\s*' +
+      v1Pat + optRangeEnd + '\\s+(?:no|do|da|em|de|in|of)?\\s*' + capWord + '\\s*' + cPat
     );
 
     // 5. Invertido: "versículo 2 do capítulo 3 de Salmos"
     patterns.push(
-      '(?:(?:no|do|da|nos|nas|o|a)\\s+)?(?:vers[ií]culos?|versos?|vers?\\.?|vv?\\.?)\\s*' +
-      v1Pat + optRangeEnd + '\\s+(?:do|no|da|em|de)\\s+(?:cap[ií]tulo|cap\\.?)\\s*' + cPat +
-      '\\s+(?:de|do|da|em)\\s+(?:livro\\s+(?:de\\s+)?)?' + normBook
+      '(?:(?:no|do|da|nos|nas|o|a)\\s+)?' + verWord + '\\s*' +
+      v1Pat + optRangeEnd + '\\s+(?:do|no|da|em|de|of|in)\\s+' + capWord + '\\s*' + cPat +
+      '\\s+(?:de|do|da|em|of|in)\\s+(?:(?:livro|book)\\s+(?:(?:de|of)\\s+)?)?' + normBook
     );
   } else {
     // Capítulo isolado (Salmo 23)
@@ -297,10 +314,10 @@ export class BibleReferenceDetector {
     );
 
     // 2. Padrão falado completo do pregador:
-    // "no livro de Filipenses, capítulo 4, versículos 8 ao 9", "Salmos capítulo 4 do versículo 8 ao versículo 9",
+    // "no livro de Filipenses, capítulo 4, versículos 8 ao 9", "Isaías no capítulo 40 versículo 31",
     // "Salmos 3 versículo 4", "Salmos cap. 3 v. 4 a 6"
     const regex2 = new RegExp(
-      `(?:^|[\\s.,;!?])(?:(?:no|do|da|em|o|a)\\s+)?(?:livro\\s+(?:de\\s+)?)?(${booksPattern})[,;]?\\s*(?:cap[ií]tulo|cap\\.?|c\\.?\\s*)?\\s*(\\d{1,3})[,;]?\\s*(?:(?:no|do|da|nos|nas|o|a)\\s+)?(?:vers[ií]culos?|versos?|vers?\\.?|vv?\\.?)\\s*(\\d{1,3})(?:\\s*(?:ao|a|e|ate|até|-)\\s*(?:(?:o|a)\\s+)?(?:vers[ií]culos?|versos?|vers?\\.?|vv?\\.?)?\\s*(\\d{1,3}))?(?:$|[\\s.,;!?])`,
+      `(?:^|[\\s.,;!?])(?:(?:no|do|da|em|o|a|in|en|dans)\\s+)?(?:(?:livro|book|libro|livre)\\s+(?:(?:de|of|du)\\s+)?)?(${booksPattern})[,;]?\\s*(?:(?:no|do|em|in|en|dans)\\s+)?(?:cap[ií]tulo|chapter|chapitre|sura|kavanyisa|cap\\.?|ch\\.?|c\\.?\\s*)?\\s*(\\d{1,3})[,;]?\\s*(?:(?:no|do|da|nos|nas|o|a|del|of)\\s+)?(?:vers[ií]culos?|verses?|versets?|versos?|mistari|mstari|ndzimana|vers?\\.?|vv?\\.?)\\s*(\\d{1,3})(?:\\s*(?:ao|a|e|ate|até|al|to|-)\\s*(?:(?:o|a|the)\\s+)?(?:vers[ií]culos?|verses?|versets?|versos?|vers?\\.?|vv?\\.?)?\\s*(\\d{1,3}))?(?:$|[\\s.,;!?])`,
       'gi'
     );
 
@@ -538,13 +555,20 @@ export class BibleReferenceDetector {
     // 1. Executa no texto original
     await runScan(text);
 
-    // 2. Executa também no texto com números por extenso convertidos em dígitos
-    const normalizedNumberText = normalizeSpokenNumbers(text);
-    if (normalizedNumberText !== text) {
+    // 2. Executa no texto higienizado contra erros fonéticos (ex: "somos 23" -> "Salmos 23")
+    const sanitizedText = sanitizeSpeechChunk(text, targetLang || 'pt-BR');
+    if (sanitizedText && sanitizedText !== text) {
+      await runScan(sanitizedText);
+    }
+
+    // 3. Executa também com números por extenso convertidos em dígitos
+    const baseForNumbers = sanitizedText || text;
+    const normalizedNumberText = normalizeSpokenNumbers(baseForNumbers);
+    if (normalizedNumberText !== baseForNumbers && normalizedNumberText !== text) {
       await runScan(normalizedNumberText);
     }
 
-    return reconcileDetectedVerses(detected, [], text);
+    return reconcileDetectedVerses(detected, [], baseForNumbers);
   }
 }
 

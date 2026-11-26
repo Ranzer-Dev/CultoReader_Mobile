@@ -19,7 +19,8 @@ import {
   Trash2,
   Edit,
   Volume2,
-  BookOpen
+  BookOpen,
+  ChevronRight
 } from 'lucide-react-native';
 import { useAccessibility } from '../../src/context/AccessibilityContext';
 import { useLanguage } from '../../src/i18n';
@@ -120,6 +121,17 @@ export default function CultosCrudScreen() {
     });
   };
 
+  const handleOpenWorship = (item: WorshipService) => {
+    router.push({
+      pathname: '/(tabs)/book',
+      params: {
+        mode: 'worship',
+        worshipId: item.id.toString(),
+        ts: String(Date.now())
+      }
+    });
+  };
+
   const handleCreateNew = () => {
     router.push('/worship/form');
   };
@@ -130,7 +142,13 @@ export default function CultosCrudScreen() {
   };
 
   const renderWorshipCard = ({ item }: { item: WorshipService }) => (
-    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <TouchableOpacity
+      activeOpacity={0.82}
+      onPress={() => handleOpenWorship(item)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title} - ${t.bookTab.tapToReadFull}`}
+      style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+    >
       <View style={styles.cardHeader}>
         <View style={styles.dateBadge}>
           <CalendarIcon size={scaledFontSize(12)} color={colors.accent} />
@@ -200,7 +218,15 @@ export default function CultosCrudScreen() {
           ))}
         </View>
       ) : null}
-    </View>
+
+      <View style={[styles.cardFooterRow, { borderTopColor: colors.border }]}>
+        <BookOpen size={scaledFontSize(13)} color={colors.primary} />
+        <Text style={[styles.cardFooterText, { color: colors.primary, fontSize: scaledFontSize(12) }]}>
+          {t.bookTab.tapToReadFull}
+        </Text>
+        <ChevronRight size={scaledFontSize(14)} color={colors.primary} />
+      </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -390,6 +416,18 @@ const styles = StyleSheet.create({
   },
   tagText: {
     fontWeight: '600'
+  },
+  cardFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 5,
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth
+  },
+  cardFooterText: {
+    fontWeight: '700'
   },
   centerLoading: {
     flex: 1,

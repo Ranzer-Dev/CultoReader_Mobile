@@ -8,7 +8,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -26,6 +26,7 @@ import { TTSService } from '../../src/services/audio/TTSService';
 
 export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { colors, scaledFontSize, speakText } = useAccessibility();
   const { t, language, languageInfo } = useLanguage();
 
@@ -227,8 +228,17 @@ export default function CalendarScreen() {
             <ActivityIndicator size="small" color={colors.primary} />
           ) : localizedCultosOfDay.length > 0 ? (
             localizedCultosOfDay.map(c => (
-              <View
+              <TouchableOpacity
                 key={c.id}
+                activeOpacity={0.82}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/book',
+                    params: { mode: 'worship', worshipId: c.id.toString(), ts: String(Date.now()) }
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`${c.title} - ${t.bookTab.tapToReadFull}`}
                 style={[styles.cultoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
               >
                 <View style={styles.cultoCardHeader}>
@@ -263,7 +273,7 @@ export default function CalendarScreen() {
                     {c.summary}
                   </Text>
                 ) : null}
-              </View>
+              </TouchableOpacity>
             ))
           ) : (
             <View style={[styles.emptyDayBox, { backgroundColor: colors.surfaceElevated }]}>

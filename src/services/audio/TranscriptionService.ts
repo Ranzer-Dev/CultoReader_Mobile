@@ -1,5 +1,10 @@
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition/build/ExpoSpeechRecognitionModule';
 import { SmartPunctuation } from '../../utils/smartPunctuation';
+import {
+  getBiblicalContextualStrings,
+  sanitizeSpeechChunk,
+  selectBestTranscript
+} from '../../utils/speechSanitizer';
 
 export interface TranscriptionListener {
   onTextUpdate: (fullText: string, latestChunk: string, isFinal: boolean) => void;
@@ -107,8 +112,8 @@ export class TranscriptionService {
           }
         }
 
-        // Reconexão contínua instantânea (150ms) para não perder o início da próxima frase
-        this.scheduleRestart(150);
+        // Reconexão contínua ultra-rápida (80ms) para não perder o início da próxima frase
+        this.scheduleRestart(80);
       });
 
       const subResult = ExpoSpeechRecognitionModule.addListener('result', (event) => {
@@ -119,7 +124,7 @@ export class TranscriptionService {
           return;
         }
 
-        const transcriptChunk = event.results?.[0]?.transcript?.trim() || '';
+        const transcriptChunk = selectBestTranscript(event.results, this.speechLocale);
         if (!transcriptChunk) return;
 
         if (event.isFinal) {
@@ -132,7 +137,7 @@ export class TranscriptionService {
             this.notifyText(this.getFullTranscript(), '', false);
           }
         } else {
-          // Streaming parcial em tempo real: exibe enquanto o pregador está falando
+          // Streaming parcial em tempo real: exibe já higienizado enquanto o pregador está falando
           this.currentPartial = transcriptChunk;
           this.notifyText(this.getFullTranscript(), transcriptChunk, false);
         }
@@ -161,10 +166,10 @@ export class TranscriptionService {
           }
         }
 
-        // Se o usuário quer continuar gravando, reconecta suavemente
+        // Se o usuário quer continuar gravando, reconecta suavemente com atraso mínimo para máxima sensibilidade
         if (this.shouldBeListening) {
           this.notifyStatus(true);
-          const delay = event.error === 'audio-capture' || event.error === 'client' ? 300 : 150;
+          const delay = event.error === 'audio-capture' || event.error === 'client' ? 250 : 80;
           this.scheduleRestart(delay);
         } else {
           this.notifyStatus(false);
@@ -246,7 +251,7 @@ export class TranscriptionService {
   }
 
   private static commitText(chunk: string): string | null {
-    const clean = chunk.trim();
+    const clean = sanitizeSpeechChunk(chunk, this.speechLocale);
     if (!clean) return null;
 
     // Normalização sem pontuação e minúsculas
@@ -321,18 +326,29 @@ export class TranscriptionService {
     this.isStarting = true;
 
     try {
+      const activeLocale = this.speechLocale || 'pt-BR';
       await ExpoSpeechRecognitionModule.start({
-        lang: this.speechLocale || 'pt-BR',
+        lang: activeLocale,
         interimResults: true,
         continuous: true,
-        maxAlternatives: 1,
-        addsPunctuation: true
+        maxAlternatives: 5,
+        addsPunctuation: true,
+        contextualStrings: getBiblicalContextualStrings(activeLocale),
+        androidIntent: 'android.speech.action.RECOGNIZE_SPEECH',
+        androidIntentOptions: {
+          EXTRA_LANGUAGE_MODEL: 'free_form',
+          EXTRA_MASK_OFFENSIVE_WORDS: false,
+          EXTRA_ENABLE_FORMATTING: 'quality',
+          EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 6000,
+          EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2000,
+          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 3000
+        }
       });
       this.isNativeActive = true;
     } catch (err) {
       this.isNativeActive = false;
       if (this.shouldBeListening) {
-        this.scheduleRestart(400);
+        this.scheduleRestart(300);
       }
     } finally {
       this.isStarting = false;

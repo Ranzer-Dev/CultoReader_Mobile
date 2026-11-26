@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
 import { WorshipRepository } from '../database/repositories/WorshipRepository';
 import { useLanguage } from '../i18n';
@@ -12,7 +12,13 @@ export function useWorshipForm({ id, onSuccess }: UseWorshipFormProps) {
   const { t } = useLanguage();
   const isEditing = Boolean(id);
 
-  const [loading, setLoading] = useState(false);
+  // Mantém referência estável para callbacks e textos sem disparar re-execução infinita do useEffect
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
+  const errorTitleRef = useRef(t.common.error);
+  errorTitleRef.current = t.common.error;
+
+  const [loading, setLoading] = useState(Boolean(id));
   const [saving, setSaving] = useState(false);
 
   const [title, setTitle] = useState('');
@@ -26,29 +32,44 @@ export function useWorshipForm({ id, onSuccess }: UseWorshipFormProps) {
   const [tags, setTags] = useState('');
 
   useEffect(() => {
-    if (id) {
-      setLoading(true);
-      WorshipRepository.findById(Number(id))
-        .then((item) => {
-          if (item) {
-            setTitle(item.title);
-            setPreacher(item.preacher);
-            setServiceDate(item.service_date);
-            setSummary(item.summary || '');
-            setFullTranscript(item.full_transcript || '');
-            setTags(item.tags || '');
-          } else {
-            Alert.alert('Erro', 'Registro não encontrado.');
-            onSuccess();
-          }
-        })
-        .catch((err) => {
-          Alert.alert('Erro', 'Falha ao carregar dados do culto: ' + err.message);
-          onSuccess();
-        })
-        .finally(() => setLoading(false));
+    if (!id) {
+      setLoading(false);
+      return;
     }
-  }, [id, onSuccess]);
+
+    let cancelled = false;
+    setLoading(true);
+
+    WorshipRepository.findById(Number(id))
+      .then((item) => {
+        if (cancelled) return;
+        if (item) {
+          setTitle(item.title);
+          setPreacher(item.preacher);
+          setServiceDate(item.service_date);
+          setSummary(item.summary || '');
+          setFullTranscript(item.full_transcript || '');
+          setTags(item.tags || '');
+        } else {
+          Alert.alert(errorTitleRef.current, 'Registro não encontrado.');
+          onSuccessRef.current();
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        Alert.alert(errorTitleRef.current, 'Falha ao carregar dados do culto: ' + (err?.message || ''));
+        onSuccessRef.current();
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const appendTranscriptChunk = useCallback((chunk: string) => {
     if (!chunk.trim()) return;
