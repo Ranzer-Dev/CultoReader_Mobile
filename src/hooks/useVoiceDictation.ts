@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition/build/ExpoSpeechRecognitionModule';
 import { SmartPunctuation } from '../utils/smartPunctuation';
-import { getBiblicalContextualStrings, selectBestTranscript } from '../utils/speechSanitizer';
+import { selectBestTranscript } from '../utils/speechSanitizer';
 
 interface UseVoiceDictationProps {
   onTextAppend: (chunk: string) => void;
@@ -18,7 +18,13 @@ export function useVoiceDictation({ onTextAppend, lang = 'pt-BR' }: UseVoiceDict
 
   useEffect(() => {
     const subResult = ExpoSpeechRecognitionModule.addListener('result', (event) => {
-      const chunk = selectBestTranscript(event.results, langRef.current);
+      const rawFallback = event.results?.[0]?.transcript?.trim() || '';
+      let chunk = rawFallback;
+      try {
+        chunk = selectBestTranscript(event.results, langRef.current) || rawFallback;
+      } catch {
+        chunk = rawFallback;
+      }
       if (chunk && event.isFinal) {
         const punctuated = SmartPunctuation.punctuateUtterance(chunk, langRef.current);
         if (punctuated) {
@@ -63,17 +69,7 @@ export function useVoiceDictation({ onTextAppend, lang = 'pt-BR' }: UseVoiceDict
           interimResults: true,
           continuous: true,
           maxAlternatives: 5,
-          addsPunctuation: true,
-          contextualStrings: getBiblicalContextualStrings(activeLocale),
-          androidIntent: 'android.speech.action.RECOGNIZE_SPEECH',
-          androidIntentOptions: {
-            EXTRA_LANGUAGE_MODEL: 'free_form',
-            EXTRA_MASK_OFFENSIVE_WORDS: false,
-            EXTRA_ENABLE_FORMATTING: 'quality',
-            EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 6000,
-            EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2000,
-            EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 3000
-          }
+          addsPunctuation: true
         });
       } catch (err: any) {
         Alert.alert('Erro ao iniciar microfone', err?.message || 'Falha ao ativar ditado.');

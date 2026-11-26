@@ -1,10 +1,6 @@
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition/build/ExpoSpeechRecognitionModule';
 import { SmartPunctuation } from '../../utils/smartPunctuation';
-import {
-  getBiblicalContextualStrings,
-  sanitizeSpeechChunk,
-  selectBestTranscript
-} from '../../utils/speechSanitizer';
+import { sanitizeSpeechChunk, selectBestTranscript } from '../../utils/speechSanitizer';
 
 export interface TranscriptionListener {
   onTextUpdate: (fullText: string, latestChunk: string, isFinal: boolean) => void;
@@ -112,8 +108,8 @@ export class TranscriptionService {
           }
         }
 
-        // Reconexão contínua ultra-rápida (80ms) para não perder o início da próxima frase
-        this.scheduleRestart(80);
+        // Reconexão contínua estável (150ms) para dar tempo ao teardown nativo sem perder falas
+        this.scheduleRestart(150);
       });
 
       const subResult = ExpoSpeechRecognitionModule.addListener('result', (event) => {
@@ -124,7 +120,13 @@ export class TranscriptionService {
           return;
         }
 
-        const transcriptChunk = selectBestTranscript(event.results, this.speechLocale);
+        const rawFallback = event.results?.[0]?.transcript?.trim() || '';
+        let transcriptChunk = rawFallback;
+        try {
+          transcriptChunk = selectBestTranscript(event.results, this.speechLocale) || rawFallback;
+        } catch {
+          transcriptChunk = rawFallback;
+        }
         if (!transcriptChunk) return;
 
         if (event.isFinal) {
@@ -166,10 +168,10 @@ export class TranscriptionService {
           }
         }
 
-        // Se o usuário quer continuar gravando, reconecta suavemente com atraso mínimo para máxima sensibilidade
+        // Se o usuário quer continuar gravando, reconecta suavemente
         if (this.shouldBeListening) {
           this.notifyStatus(true);
-          const delay = event.error === 'audio-capture' || event.error === 'client' ? 250 : 80;
+          const delay = event.error === 'audio-capture' || event.error === 'client' || event.error === 'busy' ? 350 : 150;
           this.scheduleRestart(delay);
         } else {
           this.notifyStatus(false);
@@ -326,29 +328,21 @@ export class TranscriptionService {
     this.isStarting = true;
 
     try {
-      const activeLocale = this.speechLocale || 'pt-BR';
+      // NÃO passar androidIntentOptions com extras de API 33+ (ex: EXTRA_ENABLE_FORMATTING,
+      // EXTRA_MASK_OFFENSIVE_WORDS) ou EXTRA_SPEECH_INPUT_* pois conflitam com continuous: true
+      // e lançam NoSuchFieldException via reflection no ExpoSpeechService.kt em Android <= 12.
       await ExpoSpeechRecognitionModule.start({
-        lang: activeLocale,
+        lang: this.speechLocale || 'pt-BR',
         interimResults: true,
         continuous: true,
         maxAlternatives: 5,
-        addsPunctuation: true,
-        contextualStrings: getBiblicalContextualStrings(activeLocale),
-        androidIntent: 'android.speech.action.RECOGNIZE_SPEECH',
-        androidIntentOptions: {
-          EXTRA_LANGUAGE_MODEL: 'free_form',
-          EXTRA_MASK_OFFENSIVE_WORDS: false,
-          EXTRA_ENABLE_FORMATTING: 'quality',
-          EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 6000,
-          EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2000,
-          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 3000
-        }
+        addsPunctuation: true
       });
       this.isNativeActive = true;
     } catch (err) {
       this.isNativeActive = false;
       if (this.shouldBeListening) {
-        this.scheduleRestart(300);
+        this.scheduleRestart(400);
       }
     } finally {
       this.isStarting = false;
